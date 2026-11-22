@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>walld</AssemblyName>
+    <RootNamespace>Walld</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <Version>0.1.0</Version>
+    <!-- Low-memory, low-CPU runtime settings (no concurrent/server GC, no tiered PGO). -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>false</TieredPGO>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WallpaperSuite.Core\WallpaperSuite.Core.csproj" />
+    <!-- Build-order-only reference so wallpicker.exe lands next to walld.exe.
+         The daemon never links against (or loads) the WPF picker assemblies. -->
+    <ProjectReference Include="..\WallPicker\WallPicker.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Copy the picker binaries next to the daemon so AppPaths.ResolveSibling finds them. -->
+  <Target Name="CopyWallPickerNextToDaemon" AfterTargets="Build">
+    <ItemGroup>
+      <WallPickerOutput Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.exe" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.exe')" />
+      <WallPickerOutput Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.dll" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.dll')" />
+      <WallPickerOutput Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.deps.json" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.deps.json')" />
+      <WallPickerOutput Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.runtimeconfig.json" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.runtimeconfig.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WallPickerOutput)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- dotnet publish -c Release must leave walld.exe + wallpicker.exe in one folder. -->
+  <Target Name="CopyWallPickerToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <WallPickerPublish Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.exe" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.exe')" />
+      <WallPickerPublish Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.dll" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.dll')" />
+      <WallPickerPublish Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.deps.json" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.deps.json')" />
+      <WallPickerPublish Include="..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.runtimeconfig.json" Condition="Exists('..\WallPicker\bin\$(Configuration)\net8.0-windows\wallpicker.runtimeconfig.json')" />
+    </ItemGroup>
+    <MakeDir Directories="$(PublishDir)" />
+    <Copy SourceFiles="@(WallPickerPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
