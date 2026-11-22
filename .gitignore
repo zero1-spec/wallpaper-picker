@@ -23,3 +23,10 @@ desktop.ini
 
 # Release zips
 *.zip
+
+bin/
+obj/
+dist/
+installer/Output/
+.vs/
+*.user
