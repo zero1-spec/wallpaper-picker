@@ -50,6 +50,14 @@ internal sealed class SettingsForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(430, 380);
 
+        // Window icon from the embedded ApplicationIcon in the exe.
+        try
+        {
+            var exeLocation = System.Reflection.Assembly.GetEntryAssembly()!.Location;
+            Icon = Icon.ExtractAssociatedIcon(exeLocation);
+        }
+        catch { }
+
         BuildLayout();
         LoadValues();
 

@@ -42,6 +42,14 @@ internal sealed class DuplicateFinder : Form
         MinimizeBox = false;
         MaximizeBox = false;
 
+        // Window icon from the embedded ApplicationIcon in the exe.
+        try
+        {
+            var exeLocation = System.Reflection.Assembly.GetEntryAssembly()!.Location;
+            Icon = Icon.ExtractAssociatedIcon(exeLocation);
+        }
+        catch { }
+
         _list = new ListView
         {
             Dock = DockStyle.Fill,

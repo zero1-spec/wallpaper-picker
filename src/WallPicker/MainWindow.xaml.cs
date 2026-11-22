@@ -100,6 +100,27 @@ public partial class MainWindow : Window
         InitializeComponent();
         Title = App.PickerWindowTitle;
 
+        // Window icon from the embedded ApplicationIcon in the exe.
+        try
+        {
+            var assembly = System.Reflection.Assembly.GetEntryAssembly();
+            if (assembly is null)
+            {
+                throw new InvalidOperationException("No entry assembly");
+            }
+            var exeLocation = assembly.Location;
+            using var exeIcon = System.Drawing.Icon.ExtractAssociatedIcon(exeLocation);
+            if (exeIcon is null)
+            {
+                throw new InvalidOperationException("No associated icon");
+            }
+            Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                exeIcon.Handle,
+                System.Windows.Int32Rect.Empty,
+                System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+        }
+        catch { }
+
         _metaStore = new MetaStore();
         _thumbCache = new ThumbCache(_metaStore, Dispatcher);
         _thumbCache.ThumbCompleted += OnThumbCompleted;

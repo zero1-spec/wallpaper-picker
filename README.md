@@ -9,8 +9,9 @@ Lightweight, fully offline wallpaper manager for Windows 10/11. A background tra
 
 ## Screenshots
 
-- `docs/screenshots/picker.png` — arc-carousel picker
-- `docs/screenshots/tray.png` — system tray menu
+- ![[Picker.png]] **— arc-carousel picker**
+
+- ![[System_Tray.png]] **— system tray menu**
 
 ## Features
 

@@ -7,6 +7,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>wallpicker</AssemblyName>
     <RootNamespace>WallPicker</RootNamespace>
+    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>

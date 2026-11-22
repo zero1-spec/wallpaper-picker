@@ -1,14 +1,51 @@
+using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Reflection;
 
 namespace Walld;
 
 /// <summary>
-/// Draws the tray icon in code (gradient tile with a white "W") so the exe
-/// needs no external asset. The HICON must be destroyed by the caller.
+/// Creates the tray icon. Tries to load the embedded ApplicationIcon from the
+/// exe first; falls back to drawing in code if that fails. The returned HICON
+/// must be destroyed by the caller (DestroyIcon in WalldContext.Shutdown).
 /// </summary>
 internal static class TrayIconFactory
 {
     public static Icon Create(out IntPtr iconHandle)
+    {
+        iconHandle = IntPtr.Zero;
+
+        // Try to load the embedded ApplicationIcon from the exe.
+        try
+        {
+            var assembly = Assembly.GetEntryAssembly();
+            if (assembly is null)
+            {
+                throw new InvalidOperationException("No entry assembly");
+            }
+            var exeLocation = assembly.Location;
+            using var exeIcon = Icon.ExtractAssociatedIcon(exeLocation);
+            if (exeIcon is null)
+            {
+                throw new InvalidOperationException("No associated icon");
+            }
+            // Duplicate the handle so we own it independently of exeIcon.
+            iconHandle = CopyIcon(exeIcon.Handle);
+            if (iconHandle != IntPtr.Zero)
+            {
+                return Icon.FromHandle(iconHandle);
+            }
+        }
+        catch { }
+
+        // Fallback: draw the icon in code.
+        return CreateFallback(out iconHandle);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CopyIcon(IntPtr hIcon);
+
+    private static Icon CreateFallback(out IntPtr iconHandle)
     {
         const int size = 32;
         using var bitmap = new Bitmap(size, size);

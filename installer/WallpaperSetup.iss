@@ -21,6 +21,7 @@ SolidCompression=yes
 OutputDir=Output
 OutputBaseFilename=WallpaperSetup-{#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\assets\icon.ico
 AllowNoIcons=yes
 ArchitecturesInstallIn64BitMode=x64
 ArchitecturesAllowed=x64

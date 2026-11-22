@@ -207,3 +207,13 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net8.0-win
 - [x] CommandRouter: video/video-stop dispatch
 - [x] Program.cs: video/video-stop known commands
 - [x] dotnet build = 0 errors / 0 warnings
+
+## Icon task
+- [x] assets/icon.png (256x256, rounded square with gradient, arc of cards, "W" letter)
+- [x] build/make-icon.ps1 (re-runnable, generates multi-size ICO: 16/24/32/48/64/128/256)
+- [x] assets/icon.ico (7 sizes, PNG-compressed 256 entry)
+- [x] ApplicationIcon set in Walld.csproj, WallPicker.csproj, WallVideo.csproj
+- [x] Icon set on WPF picker window, SettingsForm, DuplicateFinder (via ExtractAssociatedIcon)
+- [x] TrayIconFactory loads from embedded exe icon with code-drawn fallback + CopyIcon handle duplication
+- [x] Installer SetupIconFile points to ..\assets\icon.ico
+- [x] dotnet build = 0 errors / 0 warnings
