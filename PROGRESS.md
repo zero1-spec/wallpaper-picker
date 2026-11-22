@@ -10,7 +10,7 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 ### Root
 - [x] .gitignore
 - [x] LICENSE (MIT)
-- [x] README.md (rewritten: features, install, quick start, CLI, configuration, architecture, tech stack, performance, build, troubleshooting, roadmap, contributing, license; Release badge fixed to static; Screenshots merged; Tray menu updated with "Find duplicates" and "Start with Windows"; `--background` description corrected; Performance section now shows measured Windows 11 idle numbers ~13 MB private / ~47 MB working set / 0% CPU; wallpaper-picker repo URL; removed placeholder Screenshots line; verified claims: random/sequential mode correct, interval 1–1440 correct, SHA-256 correct, `random` CLI command correct)
+- [x] README.md (rewritten: features, install, quick start, CLI, configuration, architecture, tech stack, performance, build, troubleshooting, roadmap, contributing, license; Release badge fixed to static; Screenshots section uses HTML  tags for picker.png and tray.png; Tray menu updated with "Find duplicates" and "Start with Windows"; `--background` description corrected; Performance section now shows measured Windows 11 idle numbers ~13 MB private / ~47 MB working set / 0% CPU; wallpaper-picker repo URL; verified claims: random/sequential mode correct, interval 1–1440 correct, SHA-256 correct, `random` CLI command correct)
 - [x] CONTRIBUTING.md (short: fork, branch, 0-error build, no polling)
 - [x] WallpaperSuite.sln (classic format, hand-written; all 3 projects verified via `dotnet sln list`)
 - [x] PROGRESS.md
