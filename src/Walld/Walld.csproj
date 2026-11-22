@@ -22,6 +22,9 @@
     <!-- Build-order-only reference so wallpicker.exe lands next to walld.exe.
          The daemon never links against (or loads) the WPF picker assemblies. -->
     <ProjectReference Include="..\WallPicker\WallPicker.csproj" ReferenceOutputAssembly="false" />
+    <!-- Build-order-only reference so wallvideo.exe lands next to walld.exe.
+         The daemon never links against (or loads) the video player assemblies. -->
+    <ProjectReference Include="..\WallVideo\WallVideo.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Copy the picker binaries next to the daemon so AppPaths.ResolveSibling finds them. -->
@@ -45,6 +48,29 @@
     </ItemGroup>
     <MakeDir Directories="$(PublishDir)" />
     <Copy SourceFiles="@(WallPickerPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Copy the video player binaries next to the daemon so AppPaths.ResolveSibling finds them. -->
+  <Target Name="CopyWallVideoNextToDaemon" AfterTargets="Build">
+    <ItemGroup>
+      <WallVideoOutput Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.exe" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.exe')" />
+      <WallVideoOutput Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.dll" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.dll')" />
+      <WallVideoOutput Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.deps.json" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.deps.json')" />
+      <WallVideoOutput Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.runtimeconfig.json" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.runtimeconfig.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WallVideoOutput)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- dotnet publish -c Release must leave walld.exe + wallvideo.exe in one folder. -->
+  <Target Name="CopyWallVideoToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <WallVideoPublish Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.exe" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.exe')" />
+      <WallVideoPublish Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.dll" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.dll')" />
+      <WallVideoPublish Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.deps.json" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.deps.json')" />
+      <WallVideoPublish Include="..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.runtimeconfig.json" Condition="Exists('..\WallVideo\bin\$(Configuration)\net8.0-windows\wallvideo.runtimeconfig.json')" />
+    </ItemGroup>
+    <MakeDir Directories="$(PublishDir)" />
+    <Copy SourceFiles="@(WallVideoPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

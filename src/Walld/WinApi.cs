@@ -47,6 +47,40 @@ internal static class WinApi
 
     public const int ERROR_CLASS_ALREADY_EXISTS = 1410;
 
+    /// <summary>Returned by SHQueryUserNotificationState when a D3D full-screen app is active.</summary>
+    public const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
+
+    /// <summary>Returned by SHQueryUserNotificationState when presentation mode is active.</summary>
+    public const int QUNS_PRESENTATION_MODE = 4;
+
+    [DllImport("shell32.dll")]
+    public static extern int SHQueryUserNotificationState(ref QUERY_USER_NOTIFICATION_STATE pquns);
+
+    public enum QUERY_USER_NOTIFICATION_STATE : int
+    {
+        QUNS_NOT_PRESENT = 1,
+        QUNS_BUSY = 2,
+        QUNS_RUNNING_D3D_FULL_SCREEN = 3,
+        QUNS_PRESENTATION_MODE = 4,
+        QUNS_ACCEPTS_NOTIFICATIONS = 5,
+        QUNS_QUIET_TIME = 6
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SYSTEM_POWER_STATUS
+    {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte Reserved1;
+        public uint BatteryLifeTime;
+        public uint BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct WNDCLASSEX
     {

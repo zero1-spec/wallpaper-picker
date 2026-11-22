@@ -46,6 +46,51 @@ public sealed class AppConfig
     /// <summary>Wallpaper fit mode: fill / fit / stretch / center / tile.</summary>
     public string FitMode { get; set; } = "fill";
 
+    /// <summary>When true, sync Windows accent color from the PRIMARY palette color after applying.</summary>
+    public bool SyncAccentColor { get; set; }
+
+    /// <summary>Optional day wallpaper folder. When set, auto-change picks from this folder during day hours.</summary>
+    public string DayFolder { get; set; } = "";
+
+    /// <summary>Optional night wallpaper folder. When set, auto-change picks from this folder during night hours.</summary>
+    public string NightFolder { get; set; } = "";
+
+    /// <summary>Night start hour (0-23). Default 19.</summary>
+    public int NightStartHour { get; set; } = 19;
+
+    /// <summary>Night start minute (0-59). Default 0.</summary>
+    public int NightStartMinute { get; set; } = 0;
+
+    /// <summary>Night end hour (0-23). Default 7.</summary>
+    public int NightEndHour { get; set; } = 7;
+
+    /// <summary>Night end minute (0-59). Default 0.</summary>
+    public int NightEndMinute { get; set; } = 0;
+
+    /// <summary>Skip auto-change tick when a fullscreen app/game is running. Default true.</summary>
+    public bool PauseOnFullscreen { get; set; } = true;
+
+    /// <summary>Skip auto-change tick when battery saver is on. Default true.</summary>
+    public bool PauseOnBatterySaver { get; set; } = true;
+
+    /// <summary>Name of the active collection for auto-change filtering (empty = all wallpapers).</summary>
+    public string ActiveCollection { get; set; } = "";
+
+    /// <summary>Names of user-defined collections (the name->paths map lives in collections.json).</summary>
+    public List<string> Collections { get; set; } = [];
+
+    /// <summary>Extra folders added via drag-and-drop in the picker (scanned alongside RootFolder).</summary>
+    public List<string> ExtraFolders { get; set; } = [];
+
+    /// <summary>Last video path used for live wallpaper.</summary>
+    public string LiveWallpaperPath { get; set; } = "";
+
+    /// <summary>When true, the live wallpaper should be playing (restored at boot is NOT done yet).</summary>
+    public bool LiveWallpaperEnabled { get; set; }
+
+    /// <summary>Config schema version. Bumped when EnsureDefaults migration logic changes.</summary>
+    public int ConfigVersion { get; set; }
+
     public static Dictionary<string, HotkeySpec> DefaultHotkeys() => new()
     {
         [ActionOpenPicker] = HotkeySpec.Parse("Alt+Shift+W"),
@@ -60,13 +105,66 @@ public sealed class AppConfig
     /// <summary>Repairs a config loaded from disk (missing keys, bad values).</summary>
     public void EnsureDefaults()
     {
-        Hotkeys ??= DefaultHotkeys();
-        foreach (var (action, spec) in DefaultHotkeys())
+Hotkeys ??= DefaultHotkeys();
+foreach (var (action, spec) in DefaultHotkeys())
+{
+    Hotkeys.TryAdd(action, spec);
+}
+
+// Migrate configs created before Phase 2 hotkey defaults changed.
+        if (ConfigVersion < 1)
         {
-            Hotkeys.TryAdd(action, spec);
+            var oldNext = HotkeySpec.Parse("Alt+Shift+N");
+            var oldPrev = HotkeySpec.Parse("Alt+Shift+B");
+            if (Hotkeys.TryGetValue(ActionNextWallpaper, out var nextSpec)
+                && Hotkeys.TryGetValue(ActionPreviousWallpaper, out var prevSpec)
+                && nextSpec.ToString() == oldNext.ToString()
+                && prevSpec.ToString() == oldPrev.ToString())
+            {
+                Hotkeys[ActionNextWallpaper] = HotkeySpec.Parse("Alt+Shift+Right");
+                Hotkeys[ActionPreviousWallpaper] = HotkeySpec.Parse("Alt+Shift+Left");
+            }
+
+            ConfigVersion = 1;
         }
 
-        if (AutoChangeIntervalMinutes < 1)
+        // Phase 3: initialize collections fields.
+        if (ConfigVersion < 2)
+        {
+            Collections ??= [];
+            ActiveCollection ??= "";
+            ConfigVersion = 2;
+        }
+
+        // Phase 4: initialize accent sync field.
+        if (ConfigVersion < 3)
+        {
+            ConfigVersion = 3;
+        }
+
+        // Phase 5: initialize day/night and smart-pause fields.
+        if (ConfigVersion < 4)
+        {
+            PauseOnFullscreen = true;
+            PauseOnBatterySaver = true;
+            ConfigVersion = 4;
+        }
+
+        // Phase 6: initialize extra folders list.
+        if (ConfigVersion < 5)
+        {
+            ExtraFolders ??= [];
+            ConfigVersion = 5;
+        }
+
+        // Phase 7: initialize live wallpaper fields.
+        if (ConfigVersion < 6)
+        {
+            LiveWallpaperPath ??= "";
+            ConfigVersion = 6;
+        }
+
+if (AutoChangeIntervalMinutes < 1)
         {
             AutoChangeIntervalMinutes = 1;
         }
@@ -90,6 +188,11 @@ public sealed class AppConfig
             FitMode = "fill";
         }
 
+        NightStartHour = Math.Clamp(NightStartHour, 0, 23);
+        NightStartMinute = Math.Clamp(NightStartMinute, 0, 59);
+        NightEndHour = Math.Clamp(NightEndHour, 0, 23);
+        NightEndMinute = Math.Clamp(NightEndMinute, 0, 59);
+
         Favorites ??= [];
         LastApplied ??= "";
     }
@@ -106,5 +209,19 @@ public sealed class AppConfig
         Favorites = [.. Favorites],
         LastApplied = LastApplied,
         FitMode = FitMode,
+        SyncAccentColor = SyncAccentColor,
+        DayFolder = DayFolder,
+        NightFolder = NightFolder,
+        NightStartHour = NightStartHour,
+        NightStartMinute = NightStartMinute,
+        NightEndHour = NightEndHour,
+        NightEndMinute = NightEndMinute,
+        PauseOnFullscreen = PauseOnFullscreen,
+        PauseOnBatterySaver = PauseOnBatterySaver,
+        ActiveCollection = ActiveCollection,
+        Collections = [.. Collections],
+        ExtraFolders = [.. ExtraFolders],
+        LiveWallpaperPath = LiveWallpaperPath,
+        LiveWallpaperEnabled = LiveWallpaperEnabled,
     };
 }

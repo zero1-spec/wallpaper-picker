@@ -38,29 +38,30 @@ internal sealed class HotkeyManager : IDisposable
 
             var id = _nextId++;
             var modifiers = ToWin32Modifiers(spec.Modifiers) | WinApi.MOD_NOREPEAT;
-            if (WinApi.RegisterHotKey(_hwnd, id, modifiers, (int)spec.Key))
-            {
-                _registered[id] = action;
-            }
-            else
-            {
-                var win32Error = Marshal.GetLastWin32Error();
-                SimpleLogger.Warn(
-                    $"hotkey '{spec}' for action '{action}' could not be registered (Win32 error {win32Error})");
-                failures.Add(new HotkeyRegistrationFailure(action, spec));
-            }
+if (WinApi.RegisterHotKey(_hwnd, id, modifiers, (int)spec.Key))
+{
+    _registered[id] = action;
+    SimpleLogger.Info($"hotkey {action}: registered {spec}");
+}
+else
+{
+    var win32Error = Marshal.GetLastWin32Error();
+    SimpleLogger.Warn($"hotkey {action}: FAILED {spec} error {win32Error}");
+    failures.Add(new HotkeyRegistrationFailure(action, spec));
+}
         }
 
         return failures;
     }
 
-    public void Dispatch(int hotkeyId)
+public void Dispatch(int hotkeyId)
+{
+    if (_registered.TryGetValue(hotkeyId, out var action))
     {
-        if (_registered.TryGetValue(hotkeyId, out var action))
-        {
-            _onAction(action);
-        }
+        SimpleLogger.Info($"hotkey {action} fired");
+        _onAction(action);
     }
+}
 
     public void Dispose() => UnregisterAll();
 

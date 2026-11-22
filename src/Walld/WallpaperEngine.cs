@@ -100,10 +100,12 @@ internal sealed class WallpaperEngine(WalldContext owner)
             owner.SyncPickerSettings();
             AppConfig config = owner.Config;
 
-            List<WallpaperFile> files = WallpaperLibrary.Scan(config.RootFolder);
+            string activeFolder = GetActiveFolder(config);
+            List<WallpaperFile> files = WallpaperLibrary.Scan(activeFolder);
+            files = WallpaperLibrary.FilterByCollection(files, owner.GetActiveCollectionPaths());
             if (files.Count == 0)
             {
-                SimpleLogger.Warn($"next wallpaper: no images found in '{config.RootFolder}'");
+                SimpleLogger.Warn($"next wallpaper: no images found in '{activeFolder}' (root: '{config.RootFolder}')");
                 return false;
             }
 
@@ -137,6 +139,21 @@ internal sealed class WallpaperEngine(WalldContext owner)
 
         config.LastApplied = path;
         owner.SaveConfig();
+
+        if (config.SyncAccentColor)
+        {
+            string? primary = WallpaperApplier.ExtractPrimaryColor(path);
+            string? accentError = null;
+            if (primary is not null && WallpaperApplier.ApplyAccentColor(primary, out accentError))
+            {
+                SimpleLogger.Info($"Accent color synced to {primary}");
+            }
+            else if (accentError is not null)
+            {
+                SimpleLogger.Warn($"Accent color sync failed: {accentError}");
+            }
+        }
+
         return true;
     }
 
@@ -186,4 +203,44 @@ internal sealed class WallpaperEngine(WalldContext owner)
         => !string.IsNullOrWhiteSpace(a)
             && !string.IsNullOrWhiteSpace(b)
             && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns the folder to scan for auto-change based on the current time of
+    /// day. When DayFolder/NightFolder are set, the folder matching the current
+    /// period (day/night) is used; otherwise RootFolder is returned.
+    /// </summary>
+    private static string GetActiveFolder(AppConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.DayFolder) && string.IsNullOrWhiteSpace(config.NightFolder))
+        {
+            return config.RootFolder;
+        }
+
+        bool isNight = IsNightTime(config);
+        if (isNight && !string.IsNullOrWhiteSpace(config.NightFolder))
+        {
+            return config.NightFolder;
+        }
+        if (!isNight && !string.IsNullOrWhiteSpace(config.DayFolder))
+        {
+            return config.DayFolder;
+        }
+        return config.RootFolder;
+    }
+
+    /// <summary>Returns true when the current local time falls within the night window.</summary>
+    private static bool IsNightTime(AppConfig config)
+    {
+        var now = DateTime.Now.TimeOfDay;
+        var start = new TimeSpan(config.NightStartHour, config.NightStartMinute, 0);
+        var end = new TimeSpan(config.NightEndHour, config.NightEndMinute, 0);
+
+        // Night window can wrap midnight (e.g. 19:00-07:00).
+        if (start < end)
+        {
+            return now >= start && now < end;
+        }
+        // Wrap-around: night from 19:00 to 07:00 next day.
+        return now >= start || now < end;
+    }
 }

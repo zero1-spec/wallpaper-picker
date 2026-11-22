@@ -30,3 +30,8 @@ dist/
 installer/Output/
 .vs/
 *.user
+
+# Local tools and test files
+.kilo/
+*.bak
+sample.mp4

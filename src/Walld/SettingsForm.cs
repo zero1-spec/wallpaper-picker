@@ -27,6 +27,9 @@ internal sealed class SettingsForm : Form
 
     private readonly CheckBox _startWithWindows = new() { Text = "Start with Windows", AutoSize = true };
     private readonly CheckBox _autoChangeEnabled = new() { Text = "Enable auto change", AutoSize = true };
+    private readonly CheckBox _syncAccentColor = new() { Text = "Sync Windows accent color from wallpaper", AutoSize = true };
+    private readonly CheckBox _pauseOnFullscreen = new() { Text = "Pause auto-change on fullscreen app", AutoSize = true };
+    private readonly CheckBox _pauseOnBatterySaver = new() { Text = "Pause auto-change on battery saver", AutoSize = true };
     private readonly ComboBox _themeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 121 };
     private readonly ComboBox _nextModeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 121 };
     private readonly NumericUpDown _intervalBox = new() { Minimum = 1, Maximum = 1440, Width = 60 };
@@ -86,6 +89,9 @@ internal sealed class SettingsForm : Form
 
         var generalGrid = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1 };
         generalGrid.Controls.Add(_startWithWindows);
+        generalGrid.Controls.Add(_syncAccentColor);
+        generalGrid.Controls.Add(_pauseOnFullscreen);
+        generalGrid.Controls.Add(_pauseOnBatterySaver);
         generalGrid.Controls.Add(themeRow);
         generalGrid.Controls.Add(_autoChangeEnabled);
         generalGrid.Controls.Add(intervalRow);
@@ -136,6 +142,9 @@ internal sealed class SettingsForm : Form
         _togglePauseBox.SetSpec(_draft.GetHotkey(AppConfig.ActionTogglePause));
 
         _startWithWindows.Checked = _draft.StartWithWindows;
+        _syncAccentColor.Checked = _draft.SyncAccentColor;
+        _pauseOnFullscreen.Checked = _draft.PauseOnFullscreen;
+        _pauseOnBatterySaver.Checked = _draft.PauseOnBatterySaver;
         _autoChangeEnabled.Checked = _draft.AutoChangeEnabled;
 
         _nextModeBox.Items.AddRange(new object[] { "Random", "Sequential" });
@@ -170,6 +179,9 @@ internal sealed class SettingsForm : Form
         }
 
         _draft.StartWithWindows = _startWithWindows.Checked;
+        _draft.SyncAccentColor = _syncAccentColor.Checked;
+        _draft.PauseOnFullscreen = _pauseOnFullscreen.Checked;
+        _draft.PauseOnBatterySaver = _pauseOnBatterySaver.Checked;
         _draft.AutoChangeEnabled = _autoChangeEnabled.Checked;
         _draft.Theme = _themeBox.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "auto" };
         _draft.AutoChangeIntervalMinutes = (int)_intervalBox.Value;

@@ -56,6 +56,14 @@ internal sealed class CommandRouter(WalldContext owner)
                 owner.SetWallpaper(argument);
                 break;
 
+            case IpcCommand.Video:
+                owner.SetLiveWallpaper(argument);
+                break;
+
+            case IpcCommand.VideoStop:
+                owner.StopLiveWallpaper();
+                break;
+
             case IpcCommand.Quit:
                 owner.Shutdown();
                 break;

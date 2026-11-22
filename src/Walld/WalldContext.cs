@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using WallpaperSuite.Core;
 
 namespace Walld;
@@ -15,6 +16,7 @@ internal sealed class WalldContext : ApplicationContext
     private const string PickerProcessName = "wallpicker";
 
     private readonly JsonStore<AppConfig> _configStore = new(AppPaths.ConfigFile);
+    private readonly JsonStore<Dictionary<string, List<string>>> _collectionsStore = new(AppPaths.CollectionsFile);
     private readonly CommandRouter _router;
     private readonly WallpaperEngine _engine;
     private readonly IpcWindow _ipcWindow;
@@ -23,14 +25,40 @@ internal sealed class WalldContext : ApplicationContext
     private readonly ContextMenuStrip _trayMenu;
     private readonly ToolStripMenuItem _autoChangeItem = new("&Auto change");
     private readonly ToolStripMenuItem _autoStartItem = new("Start &with Windows");
+    private readonly ToolStripMenuItem _collectionMenu = new("&Collection");
+    private readonly ToolStripMenuItem _findDuplicatesItem = new("&Find duplicates...");
+    private readonly ToolStripMenuItem _liveWallpaperSetItem = new("&Live wallpaper: set video...");
+    private readonly ToolStripMenuItem _liveWallpaperStopItem = new("&Stop live wallpaper");
     private readonly IntPtr _trayIconHandle; // owned by us, not by the Icon wrapper
 
     private AppConfig _config;
     private SettingsForm? _settingsForm;
     private System.Windows.Forms.Timer? _autoTimer;
+    private Process? _liveWallpaperProcess;
     private bool _shutdownStarted;
 
     public AppConfig Config => _config;
+
+    /// <summary>Returns the paths of the named collection, or null when it does not exist.</summary>
+    public IReadOnlyList<string>? GetCollectionPaths(string name)
+    {
+        var collections = _collectionsStore.Load();
+        if (collections is null || !collections.TryGetValue(name, out var paths))
+        {
+            return null;
+        }
+        return paths;
+    }
+
+    /// <summary>Returns the paths of the active collection, or null when none is set.</summary>
+    public IReadOnlyList<string>? GetActiveCollectionPaths()
+    {
+        if (string.IsNullOrWhiteSpace(_config.ActiveCollection))
+        {
+            return null;
+        }
+        return GetCollectionPaths(_config.ActiveCollection);
+    }
 
     public WalldContext((string Command, string? Argument)? pendingCommand)
     {
@@ -45,6 +73,10 @@ internal sealed class WalldContext : ApplicationContext
         _hotkeys = new HotkeyManager(_ipcWindow.Handle, action => _router.ExecuteAction(action));
 
         _trayMenu = BuildTrayMenu();
+        _collectionMenu.DropDownOpening += (_, _) => RebuildCollectionMenu();
+        _findDuplicatesItem.Click += (_, _) => FindDuplicates();
+        _liveWallpaperSetItem.Click += (_, _) => SetLiveWallpaperFromDialog();
+        _liveWallpaperStopItem.Click += (_, _) => _router.Execute(IpcCommand.VideoStop);
         var icon = TrayIconFactory.Create(out _trayIconHandle);
         _notifyIcon = new NotifyIcon
         {
@@ -148,6 +180,8 @@ internal sealed class WalldContext : ApplicationContext
     /// <summary>
     /// Creates the auto-change timer only while it is enabled, and disposes it
     /// otherwise so the daemon uses zero timers when auto-change is off.
+    /// The timer fires once at the next boundary (earliest of day/night
+    /// transition or next interval tick), then reschedules itself — no polling.
     /// </summary>
     private void ReconfigureAutoChangeTimer()
     {
@@ -162,11 +196,12 @@ internal sealed class WalldContext : ApplicationContext
 
         try
         {
-            int minutes = Math.Clamp(_config.AutoChangeIntervalMinutes, 1, 1440);
-            _autoTimer = new System.Windows.Forms.Timer { Interval = checked(minutes * 60_000) };
+            DateTime nextBoundary = ComputeNextBoundary();
+            int dueMs = (int)Math.Max(1000, (nextBoundary - DateTime.Now).TotalMilliseconds);
+            _autoTimer = new System.Windows.Forms.Timer { Interval = dueMs };
             _autoTimer.Tick += (_, _) => OnAutoChangeTick();
             _autoTimer.Start();
-            SimpleLogger.Info($"auto-change enabled (every {minutes} min, mode={_config.NextMode})");
+            SimpleLogger.Info($"auto-change timer scheduled for {nextBoundary:T} (in {dueMs / 1000}s)");
         }
         catch (Exception ex)
         {
@@ -176,17 +211,63 @@ internal sealed class WalldContext : ApplicationContext
         }
     }
 
+    /// <summary>Computes the next timer boundary: earliest of day/night transition or next interval tick.</summary>
+    private DateTime ComputeNextBoundary()
+    {
+        DateTime now = DateTime.Now;
+        DateTime nextInterval = now.AddMinutes(Math.Clamp(_config.AutoChangeIntervalMinutes, 1, 1440));
+
+        if (!string.IsNullOrWhiteSpace(_config.DayFolder) || !string.IsNullOrWhiteSpace(_config.NightFolder))
+        {
+            DateTime nextTransition = ComputeNextDayNightTransition(now, _config);
+            if (nextTransition < nextInterval)
+            {
+                return nextTransition;
+            }
+        }
+
+        return nextInterval;
+    }
+
+    /// <summary>Computes the next day/night transition time after <paramref name="now"/> using config.</summary>
+    private DateTime ComputeNextDayNightTransition(DateTime now, AppConfig config)
+    {
+        var start = new TimeSpan(config.NightStartHour, config.NightStartMinute, 0);
+        var end = new TimeSpan(config.NightEndHour, config.NightEndMinute, 0);
+
+        DateTime todayStart = now.Date + start;
+        DateTime todayEnd = now.Date + end;
+        DateTime tomorrowStart = now.Date.AddDays(1) + start;
+        DateTime tomorrowEnd = now.Date.AddDays(1) + end;
+
+        var candidates = new List<DateTime>();
+        if (todayStart > now) candidates.Add(todayStart);
+        if (todayEnd > now) candidates.Add(todayEnd);
+        candidates.Add(tomorrowStart);
+        candidates.Add(tomorrowEnd);
+
+        return candidates.Min();
+    }
+
     private void OnAutoChangeTick()
     {
-        if (_autoTimer is null)
+        _autoTimer?.Stop();
+
+        if (_shutdownStarted || !_config.AutoChangeEnabled)
         {
             return;
         }
 
-        // Avoid overlapping ticks while a (possibly slow) image conversion runs.
-        _autoTimer.Stop();
         try
         {
+            // Smart pause: skip when fullscreen app or battery saver is active.
+            var (skip, reason) = SmartPause.ShouldSkipTick(_config);
+            if (skip)
+            {
+                ReconfigureAutoChangeTimer();
+                return;
+            }
+
             _engine.Next();
         }
         catch (Exception ex)
@@ -197,7 +278,7 @@ internal sealed class WalldContext : ApplicationContext
         {
             if (!_shutdownStarted && _config.AutoChangeEnabled)
             {
-                _autoTimer?.Start();
+                ReconfigureAutoChangeTimer();
             }
         }
     }
@@ -228,6 +309,7 @@ internal sealed class WalldContext : ApplicationContext
             _autoTimer = null;
         }
         catch { }
+        try { StopLiveWallpaper(); } catch { }
         try { _settingsForm?.Close(); } catch { }
         _settingsForm = null;
         try { _hotkeys.Dispose(); } catch { }
@@ -270,6 +352,10 @@ internal sealed class WalldContext : ApplicationContext
             new ToolStripSeparator(),
             new ToolStripMenuItem("&Next wallpaper", null, (_, _) => _router.Execute(IpcCommand.Next)),
             new ToolStripMenuItem("&Previous wallpaper", null, (_, _) => _router.Execute(IpcCommand.Prev)),
+            _collectionMenu,
+            _findDuplicatesItem,
+            _liveWallpaperSetItem,
+            _liveWallpaperStopItem,
             _autoChangeItem,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Se&ttings...", null, (_, _) => ShowSettings()),
@@ -279,6 +365,139 @@ internal sealed class WalldContext : ApplicationContext
             new ToolStripMenuItem("E&xit", null, (_, _) => Shutdown()),
         });
         return menu;
+    }
+
+    private void RebuildCollectionMenu()
+    {
+        _collectionMenu.DropDownItems.Clear();
+
+        var allItem = new ToolStripMenuItem("All wallpapers", null, (_, _) => SetActiveCollection(null))
+        {
+            Checked = string.IsNullOrEmpty(_config.ActiveCollection),
+        };
+        _collectionMenu.DropDownItems.Add(allItem);
+
+        var collections = _collectionsStore.Load() ?? new Dictionary<string, List<string>>();
+        foreach (var name in collections.Keys.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        {
+            var localName = name;
+            _collectionMenu.DropDownItems.Add(new ToolStripMenuItem(name, null, (_, _) => SetActiveCollection(localName))
+            {
+                Checked = string.Equals(_config.ActiveCollection, name, StringComparison.OrdinalIgnoreCase),
+            });
+        }
+    }
+
+    private void SetActiveCollection(string? name)
+    {
+        _config.ActiveCollection = name ?? "";
+        _configStore.Save(_config);
+        UpdateTrayState();
+        SimpleLogger.Info($"active collection set to '{name ?? "all"}'");
+    }
+
+    /// <summary>Launches the duplicate finder window on the UI thread.</summary>
+    private void FindDuplicates()
+    {
+        var folders = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_config.RootFolder))
+            folders.Add(_config.RootFolder);
+        if (!string.IsNullOrWhiteSpace(_config.DayFolder) && !folders.Contains(_config.DayFolder, StringComparer.OrdinalIgnoreCase))
+            folders.Add(_config.DayFolder);
+        if (!string.IsNullOrWhiteSpace(_config.NightFolder) && !folders.Contains(_config.NightFolder, StringComparer.OrdinalIgnoreCase))
+            folders.Add(_config.NightFolder);
+        foreach (string extra in _config.ExtraFolders ?? new List<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(extra) && !folders.Contains(extra, StringComparer.OrdinalIgnoreCase))
+                folders.Add(extra);
+        }
+
+        var finder = new DuplicateFinder(folders);
+        finder.Show();
+    }
+
+    /// <summary>Opens a file dialog to pick a video, then starts it as the live wallpaper.</summary>
+    private void SetLiveWallpaperFromDialog()
+    {
+        using var dialog = new System.Windows.Forms.OpenFileDialog
+        {
+            Title = "Select video for live wallpaper",
+            Filter = "Video files (*.mp4;*.avi;*.mkv;*.wmv;*.mov)|*.mp4;*.avi;*.mkv;*.wmv;*.mov|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+        _router.Execute(IpcCommand.Video, dialog.FileName);
+    }
+
+    /// <summary>Starts wallvideo.exe with the given video path, replacing any running instance.</summary>
+    public void SetLiveWallpaper(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            SimpleLogger.Warn("live wallpaper: no path given");
+            return;
+        }
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path);
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Warn($"live wallpaper: invalid path '{path}' ({ex.Message})");
+            return;
+        }
+
+        if (!File.Exists(full))
+        {
+            SimpleLogger.Warn($"live wallpaper: file not found '{full}'");
+            return;
+        }
+
+        StopLiveWallpaper();
+
+        try
+        {
+            var videoPath = AppPaths.ResolveSibling("wallvideo.exe");
+            if (videoPath is null)
+            {
+                SimpleLogger.Warn("live wallpaper: wallvideo.exe not found next to walld.exe");
+                return;
+            }
+
+            _config.LiveWallpaperPath = full;
+            _config.LiveWallpaperEnabled = true;
+            _configStore.Save(_config);
+
+            _liveWallpaperProcess = Process.Start(new ProcessStartInfo(videoPath, full) { UseShellExecute = false });
+            SimpleLogger.Info($"live wallpaper: started '{full}'");
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Error("live wallpaper: failed to start", ex);
+        }
+    }
+
+    /// <summary>Stops the running wallvideo process so the static wallpaper becomes visible again.</summary>
+    public void StopLiveWallpaper()
+    {
+        try
+        {
+            if (_liveWallpaperProcess is not null && !_liveWallpaperProcess.HasExited)
+            {
+                _liveWallpaperProcess.Kill();
+                _liveWallpaperProcess.Dispose();
+            }
+            _liveWallpaperProcess = null;
+        }
+        catch { }
+
+        _config.LiveWallpaperEnabled = false;
+        _configStore.Save(_config);
+        SimpleLogger.Info("live wallpaper: stopped");
     }
 
     private void ShowSettings()

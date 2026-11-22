@@ -1,172 +1,268 @@
 # WallpaperSuite
 
-A lightweight, fully offline Windows wallpaper manager.
+Lightweight, fully offline wallpaper manager for Windows 10/11. A background tray daemon (`walld.exe`) applies wallpapers on schedule or hotkey, and a WPF arc-carousel picker (`wallpicker.exe`) opens only when you need it.
 
-- **walld.exe** — a silent background daemon: tray icon, configurable global hotkeys,
-  single-instance IPC via `WM_COPYDATA` (no server, no port, no polling — 0% idle CPU).
-- **wallpicker.exe** — the fullscreen arc-style wallpaper picker: thumbnail cards, palette
-  swatches, search, favorites, fit modes, and one-click apply.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![.NET 8](https://img.shields.io/badge/.NET-8-blue?logo=dotnet)](https://dotnet.microsoft.com/)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-blue?logo=windows)](https://www.microsoft.com/windows)
+![Release 0.3.0](https://img.shields.io/badge/Release-0.3.0-green)
 
-## Status
+## Screenshots
 
-Phase 0 (core library), Phase 1 (daemon) and the **Picker MVP** are implemented:
+- `docs/screenshots/picker.png` — arc-carousel picker
+- `docs/screenshots/tray.png` — system tray menu
 
-- tray icon + context menu, drawn in code (no external assets)
-- global hotkeys (`RegisterHotKey`, `MOD_NOREPEAT`) configured in a settings window
-- settings window with hotkey recorder, theme, autostart and interval
-- `walld.exe` doubles as the CLI: commands are forwarded to the running daemon over IPC
-- autostart via `HKCU\...\CurrentVersion\Run` (no admin rights needed)
-- fullscreen picker on the cursor's monitor with an animated arc of wallpaper cards
-- background thumbnail cache (`%APPDATA%\WallpaperPicker\thumbs`) and palette extraction
-- keyboard + mouse navigation, search (`/`), favorites (`F`/`V`), fit mode (`M`), random (`R`)
-- applying a wallpaper via `SystemParametersInfo` (with webp → png conversion when possible)
+## Features
 
-Not implemented yet (later phases): the auto-change timer and next/prev/random daemon
-commands, video wallpapers, scheduling, collections.
+**Picker UI**
+- Arc carousel with cover-crop thumbnails and live background crossfade
+- 5-color palette per wallpaper (click a swatch to copy hex)
+- Favorites (heart button, `F`) and favorites-only filter (`V`)
+- Fit modes: fill, fit, stretch, center, tile (`M`)
+- Search matches filename and tags (`/`)
 
-## Requirements
+**Collections and tags**
+- Create collections, add/remove the centered wallpaper (`C`)
+- Edit comma-separated tags per wallpaper (`T`)
+- Cycle All / Favorites / collections (`B`)
+- Auto-change picks only from the active collection when one is set
 
-- Windows 10 / 11
+**Auto-change**
+- Random or sequential mode, interval 1–1440 minutes (default 30)
+- History of last 50 applied wallpapers; `next`/`prev` never repeat the same image twice
+- Day/Night folders: pick from different folders by time of day (default night 19:00–07:00)
+- Smart pause: skips ticks during fullscreen apps/games or battery saver (logged in `walld.log`)
+
+**Accent color**
+- Sync Windows accent color from the wallpaper's primary palette color after applying (optional, off by default)
+
+**Duplicate finder**
+- Tray menu "Find duplicates" scans folders, groups by size then SHA-256 hash
+- Send checked duplicates to Recycle Bin (with confirmation)
+- Remove missing/broken entries from collections and history
+
+**Drag and drop**
+- Drop image files or folders onto the picker to add them to the library (paths stored, no file copying)
+
+**CLI and hotkeys**
+- `walld.exe open|next|prev|random|pause|resume|toggle-pause|set <path>|quit [--background]`
+- Global hotkeys editable in Settings (defaults: `Alt+Shift+W` open picker, `Alt+Shift+Right` next, `Alt+Shift+Left` previous)
+
+**Install and run**
+- Per-user install to `%LOCALAPPDATA%\Programs\WallpaperSuite`, no admin rights
+- "Start with Windows" option (on by default)
+- Self-contained — no .NET runtime installation required
+- Uninstall keeps your data in `%APPDATA%\WallpaperPicker`
+
+## Install
+
+1. Download `WallpaperSetup-0.3.0.exe` from Releases.
+2. Run it. The installer is unsigned, so Windows SmartScreen may block it: choose **More info → Run anyway**.
+3. The app installs per-user to `%LOCALAPPDATA%\Programs\WallpaperSuite` — no administrator rights needed. "Start with Windows" is checked by default.
+4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
+
+The publish is self-contained (`.NET 8 runtime bundled`), so you do **not** need to install .NET separately.
+
+## Quick start + Usage
+
+After install, `walld.exe` starts minimized to the tray with "Start with Windows".
+
+### Default hotkeys
+
+| Action | Default hotkey |
+|--------|---------------|
+| Open picker | `Alt+Shift+W` |
+| Next wallpaper | `Alt+Shift+Right` |
+| Previous wallpaper | `Alt+Shift+Left` |
+| Pause / resume auto-change | none (set in Settings) |
+
+Hotkeys are editable in Settings → Hotkeys. Your changes are never overwritten by updates.
+
+### Picker keyboard shortcuts
+
+Open the picker with the tray menu or `Alt+Shift+W`.
+
+| Key | Action |
+|-----|--------|
+| `Left` / `H` | Move 1 card back |
+| `Right` / `L` | Move 1 card forward |
+| `Up` / `K` | Move 10 cards back |
+| `Down` / `J` | Move 10 cards forward |
+| `PageUp` | Move 25 cards back |
+| `PageDown` | Move 25 cards forward |
+| `Home` | Jump to first |
+| `End` | Jump to last |
+| `Enter` | Apply centered wallpaper |
+| `Esc` | Close without applying |
+| `/` | Open search box |
+| `F` | Toggle favorite |
+| `V` | Toggle favorites-only filter |
+| `R` | Jump to random wallpaper |
+| `M` | Cycle fit mode (fill/fit/stretch/center/tile) |
+| `O` | Choose folder |
+| `E` | Export palette (CSS/JSON/TOML) |
+| `C` | Add/remove to collection |
+| `T` | Edit tags (comma-separated) |
+| `B` | Cycle All / Favorites / collections |
+| Wheel | Scroll the arc one card per notch |
+
+### Tray menu
+
+Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Collection** submenu, **Find duplicates…**, **Auto change** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
+
+### CLI commands (`walld.exe`)
+
+| Command | Effect |
+|---------|--------|
+| `open` | Open the picker |
+| `next` | Apply next wallpaper |
+| `prev` | Apply previous wallpaper |
+| `random` | Apply random wallpaper |
+| `pause` | Stop auto-change |
+| `resume` | Start auto-change |
+| `toggle-pause` | Toggle auto-change |
+| `set <path>` | Apply an explicit image file |
+| `quit` | Stop the daemon |
+| `--background` | Start the daemon silently without opening the picker (used by autostart) |
+
+## Configuration
+
+User data lives in `%APPDATA%\WallpaperPicker`:
+
+| File / folder | Purpose |
+|---------------|---------|
+| `config.json` | All settings (folders, hotkeys, fit mode, accent sync, etc.) |
+| `history.json` | Last 50 applied wallpapers |
+| `collections.json` | User-defined collections (name → paths) |
+| `meta.json` | Thumbnails and per-wallpaper tags |
+| `thumbs/` | Thumbnail cache |
+| `export/` | Palette exports (`palette.css`, `palette.json`, `palette.toml`) |
+| `converted/` | Non-native images (e.g. .webp) converted to PNG |
+| `logs/walld.log` | Daemon log |
+
+Important `config.json` options:
+
+| Option | Meaning |
+|--------|---------|
+| `RootFolder` | Main wallpaper folder |
+| `ExtraFolders` | Additional folders added by drag-and-drop |
+| `DayFolder` / `NightFolder` | Day/night auto-change folders (optional) |
+| `NightStart` / `NightEnd` | Night window hours:minutes (default 19:00–07:00) |
+| `ActiveCollection` | Collection name for auto-change filtering (empty = all) |
+| `SyncAccentColor` | Sync Windows accent from wallpaper primary color (default off) |
+| `PauseOnFullscreen` / `PauseOnBatterySaver` | Smart pause (default on) |
+| `AutoChangeIntervalMinutes` | Auto-change interval, 1–1440 (default 30) |
+| `FitMode` | fill / fit / stretch / center / tile |
+
+Options with **no Settings UI yet**: DayFolder/NightFolder times, ExtraFolders, ActiveCollection — edit `config.json` directly while the daemon is not running.
+
+## Architecture / Project structure
+
+```
+WallpaperSuite/
+├── src/
+│   ├── WallpaperSuite.Core/   # Shared library: config, JSON store, hotkey spec, wallpaper applier, logger, IPC
+│   ├── Walld/                 # walld.exe — WinForms tray daemon (no window), auto-change, duplicates, settings
+│   └── WallPicker/            # wallpicker.exe — WPF arc-carousel picker UI
+├── build/                     # PowerShell build scripts (publish.ps1, build-installer.ps1)
+├── installer/                 # Inno Setup 6 script → installer/Output/
+├── docs/screenshots/          # Screenshot placeholders
+├── WallpaperSuite.sln         # Classic .NET solution (3 projects)
+├── CONTRIBUTING.md
+├── LICENSE                    # MIT
+└── README.md
+```
+
+`walld.exe` is a tiny tray daemon (WinForms, no main window) that runs auto-change, handles global hotkeys, and serves IPC. `wallpicker.exe` is the WPF UI that opens only when needed and closes after you apply or press Esc. IPC between CLI and daemon uses `WM_COPYDATA` (no network ports, no local server). Single instance is enforced by a named mutex (`Local\WallpaperSuite.Walld`).
+
+## Tech stack
+
+- .NET 8, C# 12
+- WinForms (daemon `walld.exe`)
+- WPF (picker `wallpicker.exe`)
+- Win32 P/Invoke (hotkeys, wallpaper apply, accent color, shell operations)
+- System.Text.Json (atomic config storage)
+- Inno Setup 6 (installer)
+- PowerShell build scripts (`build/publish.ps1`, `build/build-installer.ps1`)
+
+No third-party NuGet packages — only project references between the three projects.
+
+## Performance / RAM
+
+Measured on Windows 11, idle, ~5 seconds after `walld.exe --background` start (installed 0.3.0 build, no `config.json` present):
+
+| Metric | Value |
+|--------|-------|
+| Private memory | ~13 MB (Task Manager shows ~12.7 MB) |
+| Total working set | ~47 MB (includes shared .NET runtime pages) |
+| Idle CPU | 0% |
+| Power usage | Very low |
+
+`wallpicker.exe`: not measured yet.
+
+Why it stays light:
+- No polling — the auto-change timer exists only while enabled and sleeps until the next boundary (day/night transition or interval tick)
+- Picker closes after apply; daemon uses zero timers when auto-change is off
+- GC settings from `Walld.csproj`: `ConcurrentGarbageCollection=false`, `ServerGarbageCollection=false`, `TieredPGO=false`
+
+## Build from source
+
+Prerequisites:
 - .NET 8 SDK
+- Optionally Inno Setup 6 (to build the installer)
 
-## Build
-
-```bash
+```powershell
+git clone https://github.com/zero1-spec/wallpaper-picker
+cd wallpaper-picker
 dotnet build WallpaperSuite.sln
-```
-
-The daemon build automatically copies `wallpicker.exe` next to `walld.exe`
-(same folder), so the daemon can always find the picker via a relative path.
-
-For a self-contained folder with both executables:
-
-```bash
-dotnet publish src/Walld -c Release
-```
-
-Output: `src/Walld/bin/Release/net8.0-windows/publish/` containing `walld.exe`
-and `wallpicker.exe` side by side.
-
-## Run
-
-```bash
 dotnet run --project src/Walld
 ```
 
-The command blocks while the daemon runs (close it from the tray icon or run
-`walld.exe quit` in another terminal).
+To build the installer:
 
-Run the picker directly (it is also opened by the `Open picker` hotkey and
-`walld.exe open`):
-
-```bash
-src\WallPicker\bin\Debug\net8.0-windows\wallpicker.exe "D:\Wallpapers"
+```powershell
+.\build\build-installer.ps1
 ```
 
-With no argument the picker uses the saved `RootFolder`; if that is missing or
-no longer exists it shows a folder picker once and saves the choice.
+Output: `installer\Output\WallpaperSetup-0.3.0.exe`.
 
-## CLI
+The solution is a classic hand-written `.sln` (not `.slnx`), which works with `dotnet build` and older SDKs.
 
-`walld.exe` is both the daemon and the CLI. When a daemon is already running,
-the command is forwarded to it and the new process exits immediately; when no
-daemon is running, the daemon starts and then executes the command.
+## Troubleshooting / FAQ
 
-```
-walld.exe open            open the picker (same as the default hotkey)
-walld.exe next            next wallpaper            (TODO Phase 2)
-walld.exe prev            previous wallpaper        (TODO Phase 2)
-walld.exe random          random wallpaper          (TODO Phase 2)
-walld.exe pause           pause auto-change
-walld.exe resume          resume auto-change
-walld.exe toggle-pause    toggle pause state
-walld.exe set <path>      set a specific image      (TODO Phase 2)
-walld.exe quit            stop the running daemon
-walld.exe --background    start silently (used by autostart)
-```
+| Problem | Fix |
+|---------|-----|
+| Hotkey "already in use" | A balloon warning appears; change the hotkey in Settings. |
+| `Alt+Shift` switches keyboard layout | Some PCs map `Alt+Shift` to input-language switching; change the hotkey in Settings. |
+| SmartScreen blocks installer | Unsigned installer. Choose **More info → Run anyway**. |
+| `.webp` images skipped | WPF needs a WIC WebP codec. Install one, or use `.jpg`/`.png`/`.bmp`. |
+| Wallpaper not changing | Check `%APPDATA%\WallpaperPicker\logs\walld.log`. |
+| Reset configuration | Stop the daemon (`walld.exe quit`), then delete `config.json`. |
 
-## Default hotkeys
+## Roadmap
 
-| Action              | Default      |
-|---------------------|--------------|
-| Open picker         | Alt+Shift+W  |
-| Next wallpaper      | Alt+Shift+N  |
-| Previous wallpaper  | Alt+Shift+B  |
-| Pause / resume      | (none)       |
+- [x] Arc carousel picker with palette, favorites, fit modes, search
+- [x] Collections and tags
+- [x] Auto-change with history (next/prev)
+- [x] Day/night folders
+- [x] Smart pause (fullscreen app, battery saver)
+- [x] Palette export (CSS/JSON/terminal TOML)
+- [x] Windows accent color sync
+- [x] Drag and drop
+- [x] Duplicate finder with recycle bin
+- [x] Global hotkeys with hotkey recorder
+- [x] Autostart
+- [x] CLI commands
+- [x] Fully offline, no admin rights
+- [ ] Video / live wallpaper
+- [ ] Day/Night folder UI in Settings (edit config.json for now)
+- [ ] Multi-monitor support
+- [ ] Code signing for the installer
 
-Any hotkey can be changed in **Settings** (tray menu). A hotkey that is already
-used by another app is reported with a balloon tip and skipped — the tray menu
-keeps working.
+## Contributing
 
-## Picker controls
-
-| Input | Action |
-|-------|--------|
-| `←` / `→` (or `H` / `L`) | move one card |
-| `↑` / `↓` (or `K` / `J`) | move ten cards |
-| `PgUp` / `PgDn` | move twenty-five cards |
-| `Home` / `End` | first / last card |
-| Mouse wheel | one card per notch |
-| Click a side card | select it |
-| Click the centered card | apply it and close |
-| `Enter` or the **Set** button | apply the centered wallpaper |
-| `Esc` | close without applying |
-| Click a palette swatch | copy its hex to the clipboard |
-| `F` / heart button | toggle favorite |
-| `V` | show favorites only |
-| `M` | cycle fit mode (fill / fit / stretch / center / tile) |
-| `R` | jump to a random wallpaper |
-| `/` | open search; `Enter` closes it, `Esc` clears it |
-
-## Data
-
-- Config and logs: `%APPDATA%\WallpaperPicker` (`config.json`, `logs\walld.log`)
-- Autostart: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `WallpaperSuite`
-- No hardcoded install paths anywhere; the picker is resolved as a sibling of `walld.exe`.
-
-## Manual test checklist
-
-1. **First start shows tray icon** — run `walld.exe`; a "W" tray icon appears.
-2. **Second launch does not create a second process** — run `walld.exe` again while
-   the daemon runs; no second process appears (Task Manager), the picker opens instead.
-3. **Alt+Shift+W opens the picker** — the fullscreen arc picker appears on the monitor
-   with the mouse cursor; Esc closes it.
-4. **Changing a hotkey in Settings works instantly without restart** — record a new
-   combo, press Save, the old hotkey stops working and the new one works immediately.
-5. **A conflicting hotkey shows the balloon warning** — set a hotkey owned by another
-   app (e.g. Win+L) or duplicate one; a balloon / message reports the conflict.
-6. **Start with Windows toggle** — toggling the tray/settings checkbox creates and
-   removes the `WallpaperSuite` value under `HKCU\...\CurrentVersion\Run`
-   (check with `regedit`); data is `"...\walld.exe" --background`.
-7. **`walld.exe quit` closes the running daemon** — process disappears from Task Manager.
-8. **No ghost tray icon** — after Exit (tray menu) or `quit`, the icon disappears
-   immediately (hover the mouse over the tray to confirm).
-9. Bonus: `walld.exe next` while the daemon runs appends `TODO Phase 2` to
-   `%APPDATA%\WallpaperPicker\logs\walld.log` and shows nothing on screen.
-
-### Picker
-
-10. **Arc renders** — launch `wallpicker.exe <folder>`; images appear as an arc of cards,
-    the center card is largest, and the background matches the selected wallpaper.
-11. **Navigation** — `←/→` move 1, `↑/↓` move 10, `PgUp/PgDn` move 25, `Home/End` jump
-    to the ends, and the mouse wheel moves one card per notch.
-12. **Apply** — clicking the centered card (or `Enter`, or **Set**) applies the wallpaper,
-    shows a toast, and closes the picker.
-13. **Side-card click selects without applying** — the picker stays open.
-14. **Swatch copy does not apply** — clicking a palette swatch copies its hex to the
-    clipboard, shows a toast, and leaves the current wallpaper unchanged.
-15. **Favorites** — `F` toggles the heart, `V` filters to favorites only.
-16. **Fit mode** — `M` cycles fill / fit / stretch / center / tile and the status bar updates.
-17. **Search** — `/` opens the search box; typing filters cards; `Enter` closes it; `Esc` clears it.
-18. **Persistence** — `LastApplied`, `FitMode` and `Favorites` survive a restart
-    (`%APPDATA%\WallpaperPicker\config.json`).
-19. **Single instance** — launching `wallpicker.exe` again while it is open focuses the
-    existing window and the second process exits.
-20. **Folder fallback** — with no argument and no valid `RootFolder`, a folder dialog appears
-    once and the choice is saved.
-21. **Thumbnail cache** — second launch is noticeably faster; JPEG thumbs accumulate in
-    `%APPDATA%\WallpaperPicker\thumbs`.
+Fork, create a branch, make your change, and ensure `dotnet build WallpaperSuite.sln` has **0 errors / 0 warnings**. Keep the daemon RAM low and idle CPU at 0% — no polling. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [`LICENSE`](LICENSE).

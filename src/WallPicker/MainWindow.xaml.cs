@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -49,6 +51,7 @@ public partial class MainWindow : Window
     private List<WallpaperItem> _items = new();
     private int _selected;
     private bool _favOnly;
+    private string _collectionMode = "all"; // "all" | "favorites" | <collection name>
     private bool _scanning = true;
     private bool _closing;
     private bool _initialized;
@@ -135,28 +138,33 @@ public partial class MainWindow : Window
         Height = screen.Bounds.Height;
         Opacity = 0;
 
-        Show();
+Show();
 
-        IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd != IntPtr.Zero)
-        {
-            SetWindowPos(
-                hwnd,
-                IntPtr.Zero,
-                screen.Bounds.Left,
-                screen.Bounds.Top,
-                screen.Bounds.Width,
-                screen.Bounds.Height,
-                SWP_NOZORDER);
-        }
+IntPtr hwnd = new WindowInteropHelper(this).Handle;
+if (hwnd != IntPtr.Zero)
+{
+    SetWindowPos(
+        hwnd,
+        IntPtr.Zero,
+        screen.Bounds.Left,
+        screen.Bounds.Top,
+        screen.Bounds.Width,
+        screen.Bounds.Height,
+        0x0004);
+// replaced below
+}
 
-        RecalcMetrics();
-        UpdateCards();
+RecalcMetrics();
+UpdateCards();
 
-        Activate();
-        Focus();
-        BeginIntroAnimation();
-        _ = StartScanAsync();
+
+Activate();
+Focus();
+PickerFocus.Take(this);
+Keyboard.Focus(this);
+
+BeginIntroAnimation();
+_ = StartScanAsync();
     }
 
     private void BeginIntroAnimation()
@@ -215,7 +223,7 @@ public partial class MainWindow : Window
 
         try
         {
-            List<WallpaperItem> items = await ImageScanner.ScanAsync(_folder, token);
+            List<WallpaperItem> items = await ImageScanner.ScanAsync(GetScanFolders(), token);
             if (token.IsCancellationRequested || _closing)
             {
                 return;
@@ -234,6 +242,113 @@ public partial class MainWindow : Window
             SimpleLogger.Error("WallPicker scan failed", ex);
             ShowToast("Scan failed: " + ex.Message, 2500);
         }
+    }
+
+    /// <summary>Returns all folders to scan: RootFolder plus any extra folders added by drag-and-drop.</summary>
+    private IEnumerable<string> GetScanFolders()
+    {
+        var folders = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_config.RootFolder))
+        {
+            folders.Add(_config.RootFolder);
+        }
+        foreach (string extra in _config.ExtraFolders ?? new List<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(extra) && !folders.Contains(extra, StringComparer.OrdinalIgnoreCase))
+            {
+                folders.Add(extra);
+            }
+        }
+        return folders;
+    }
+
+    /// <summary>Re-scans RootFolder + ExtraFolders and refreshes the arc.</summary>
+    public void RescanFolders()
+    {
+        _folder = _config.RootFolder;
+        _ = StartScanAsync();
+    }
+
+    /// <summary>Adds dropped folders/files to ExtraFolders and refreshes the library.</summary>
+    private void AddDroppedPaths(string[] paths)
+    {
+        if (paths is null || paths.Length == 0)
+        {
+            return;
+        }
+
+        List<string> added = new();
+        foreach (string path in paths)
+        {
+            string full;
+            try
+            {
+                full = Path.GetFullPath(path);
+            }
+            catch
+            {
+                continue;
+            }
+
+            bool isDir;
+            try
+            {
+                isDir = Directory.Exists(full);
+            }
+            catch
+            {
+                isDir = false;
+            }
+
+            if (!isDir && !File.Exists(full))
+            {
+                continue;
+            }
+
+            string target = isDir ? full : Path.GetDirectoryName(full) ?? full;
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                continue;
+            }
+
+            if (!_config.ExtraFolders.Contains(target, StringComparer.OrdinalIgnoreCase))
+            {
+                _config.ExtraFolders.Add(target);
+                added.Add(target);
+            }
+        }
+
+        if (added.Count > 0)
+        {
+            _configStore.Save(_config);
+            ShowToast($"Added {added.Count} folder(s) from drag-and-drop", 2000);
+            RescanFolders();
+        }
+    }
+
+    private void Window_DragEnter(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effects = DragDropEffects.Copy;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        AddDroppedPaths(paths ?? Array.Empty<string>());
+        e.Handled = true;
     }
 
     private void OnScanned(List<WallpaperItem> items)
@@ -625,8 +740,33 @@ public partial class MainWindow : Window
         string query = SearchBox.Text.Trim().ToLowerInvariant();
         _items = _allItems
             .Where(item =>
-                (query.Length == 0 || item.LowerName.Contains(query, StringComparison.Ordinal))
-                && (!_favOnly || _favorites.Contains(item.Path)))
+            {
+                // Collection filter.
+                bool collectionMatch = _collectionMode switch
+                {
+                    "all" => true,
+                    "favorites" => _favorites.Contains(item.Path),
+                    _ => IsInCollection(_collectionMode, item.Path)
+                };
+                if (!collectionMatch)
+                {
+                    return false;
+                }
+
+                // Search matches name or tags.
+                if (query.Length > 0)
+                {
+                    bool nameMatch = item.LowerName.Contains(query, StringComparison.Ordinal);
+                    bool tagMatch = _metaStore.GetTags(item.Key)
+                        .Any(t => t.ToLowerInvariant().Contains(query, StringComparison.Ordinal));
+                    if (!nameMatch && !tagMatch)
+                    {
+                        return false;
+                    }
+                }
+
+                return !_favOnly || _favorites.Contains(item.Path);
+            })
             .ToList();
 
         int index = 0;
@@ -693,6 +833,188 @@ public partial class MainWindow : Window
         UpdateStatus();
     }
 
+    /// <summary>Returns true when the wallpaper path belongs to the named collection.</summary>
+    private bool IsInCollection(string collectionName, string path)
+    {
+        if (string.IsNullOrWhiteSpace(collectionName))
+        {
+            return false;
+        }
+
+        var collections = new JsonStore<Dictionary<string, List<string>>>(AppPaths.CollectionsFile).Load();
+        if (collections is null)
+        {
+            return false;
+        }
+
+        return collections.TryGetValue(collectionName, out var paths)
+            && paths.Contains(path, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Adds or removes the centered wallpaper from the named collection.</summary>
+    private void ToggleCollection(string collectionName)
+    {
+        if (_items.Count == 0 || _selected < 0 || _selected >= _items.Count
+            || string.IsNullOrWhiteSpace(collectionName))
+        {
+            return;
+        }
+
+        WallpaperItem item = _items[_selected];
+        var store = new JsonStore<Dictionary<string, List<string>>>(AppPaths.CollectionsFile);
+        var collections = store.Load() ?? new Dictionary<string, List<string>>();
+
+        bool nowIn = collections.TryGetValue(collectionName, out var paths)
+            && paths.Contains(item.Path, StringComparer.OrdinalIgnoreCase);
+
+        if (nowIn)
+        {
+            if (collections.TryGetValue(collectionName, out var collPaths))
+            {
+                collPaths.Remove(item.Path);
+                if (collPaths.Count == 0)
+                {
+                    collections.Remove(collectionName);
+                }
+            }
+            ShowToast($"Removed from '{collectionName}'");
+        }
+        else
+        {
+            if (!collections.TryGetValue(collectionName, out var newPaths))
+            {
+                newPaths = [];
+                collections[collectionName] = newPaths;
+            }
+            newPaths.Add(item.Path);
+            ShowToast($"Added to '{collectionName}'");
+        }
+
+        store.Save(collections);
+
+        // Sync config.Collections list.
+        _config.Collections = collections
+            .Keys
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _configStore.Save(_config);
+    }
+
+    /// <summary>Opens the collection overlay for the centered wallpaper.</summary>
+    private void ShowCollectionOverlay()
+    {
+        if (_items.Count == 0 || _selected < 0 || _selected >= _items.Count)
+        {
+            return;
+        }
+
+        HideSearch();
+        WallpaperItem item = _items[_selected];
+
+        // Determine current collection name (first collection containing this wallpaper).
+        var store = new JsonStore<Dictionary<string, List<string>>>(AppPaths.CollectionsFile);
+        var collections = store.Load() ?? new Dictionary<string, List<string>>();
+        string current = "";
+        foreach (var kvp in collections)
+        {
+            if (kvp.Value.Contains(item.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                current = kvp.Key;
+                break;
+            }
+        }
+
+        CollectionBox.Text = current;
+        CollectionPlaceholder.Visibility = string.IsNullOrEmpty(current)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CollectionHost.Visibility = Visibility.Visible;
+        CollectionBox.Focus();
+        CollectionBox.SelectAll();
+    }
+
+    /// <summary>Closes the collection overlay.</summary>
+    private void HideCollectionOverlay()
+    {
+        CollectionHost.Visibility = Visibility.Collapsed;
+        Focus();
+    }
+
+    /// <summary>Opens the tag overlay for the centered wallpaper.</summary>
+    private void ShowTagOverlay()
+    {
+        if (_items.Count == 0 || _selected < 0 || _selected >= _items.Count)
+        {
+            return;
+        }
+
+        HideSearch();
+        WallpaperItem item = _items[_selected];
+        var tags = _metaStore.GetTags(item.Key);
+        TagBox.Text = string.Join(", ", tags);
+        TagPlaceholder.Visibility = tags.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TagHost.Visibility = Visibility.Visible;
+        TagBox.Focus();
+        TagBox.SelectAll();
+    }
+
+    /// <summary>Closes the tag overlay.</summary>
+    private void HideTagOverlay()
+    {
+        TagHost.Visibility = Visibility.Collapsed;
+        Focus();
+    }
+
+    /// <summary>Cycles the view: All → Favorites → each collection → All.</summary>
+    private void CycleCollectionView()
+    {
+        var store = new JsonStore<Dictionary<string, List<string>>>(AppPaths.CollectionsFile);
+        var collections = store.Load() ?? new Dictionary<string, List<string>>();
+        var names = collections
+            .Keys
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        string next;
+        if (_collectionMode == "all")
+        {
+            next = names.Count > 0 ? names[0] : "favorites";
+        }
+        else if (_collectionMode == "favorites")
+        {
+            next = names.Count > 0 ? names[0] : "all";
+        }
+        else
+        {
+            int idx = names.IndexOf(_collectionMode);
+            if (idx >= 0 && idx + 1 < names.Count)
+            {
+                next = names[idx + 1];
+            }
+            else
+            {
+                next = "all";
+            }
+        }
+
+        SetCollectionMode(next);
+    }
+
+    private void SetCollectionMode(string mode)
+    {
+        _collectionMode = mode;
+        string label = mode switch
+        {
+            "all" => "All wallpapers",
+            "favorites" => "Favorites",
+            _ => $"Collection: {mode}"
+        };
+        ShowToast(label);
+        _favOnly = mode == "favorites";
+        SearchBox.Text = string.Empty;
+        ApplyFilter();
+    }
+
     private void ApplyCurrent()
     {
         if (_items.Count == 0 || _selected < 0 || _selected >= _items.Count || _closing)
@@ -711,6 +1033,21 @@ public partial class MainWindow : Window
         _configStore.Save(_config);
         ShowToast("Wallpaper set \u2713", 1200);
 
+        if (_config.SyncAccentColor)
+        {
+            _metaStore.TryGet(item.Key, out ThumbMeta? meta);
+            string? primary = meta?.Pal is { Length: > 0 } ? meta.Pal[0] : null;
+            string? accentError = null;
+            if (primary is not null && WallpaperApplier.ApplyAccentColor(primary, out accentError))
+            {
+                SimpleLogger.Info($"Accent color synced to {primary}");
+            }
+            else if (accentError is not null)
+            {
+                SimpleLogger.Warn($"Accent color sync failed: {accentError}");
+            }
+        }
+
         _closeTimer?.Stop();
         _closeTimer = new DispatcherTimer
         {
@@ -722,6 +1059,86 @@ public partial class MainWindow : Window
             CloseWithAnimation();
         };
         _closeTimer.Start();
+    }
+
+    /// <summary>Exports the centered wallpaper's 5-color palette to %APPDATA%\WallpaperPicker\export\.</summary>
+    private void ExportPalette()
+    {
+        if (_items.Count == 0 || _selected < 0 || _selected >= _items.Count)
+        {
+            return;
+        }
+
+        WallpaperItem item = _items[_selected];
+        _metaStore.TryGet(item.Key, out ThumbMeta? meta);
+        string[]? pal = meta?.Pal is { Length: 5 } ? meta.Pal : null;
+
+        if (pal is null)
+        {
+            ShowToast("No palette available for this wallpaper", 2000);
+            return;
+        }
+
+        string exportDir = AppPaths.ExportDir;
+        try
+        {
+            Directory.CreateDirectory(exportDir);
+
+            // palette.css
+            var css = new StringBuilder();
+            css.AppendLine(":root {");
+            for (int i = 0; i < 5; i++)
+            {
+                string name = PaletteExtractor.Labels[i].ToLowerInvariant();
+                css.AppendLine($"  --wallpaper-{name}: {pal[i]};");
+            }
+            css.AppendLine("}");
+            File.WriteAllText(Path.Combine(exportDir, "palette.css"), css.ToString());
+
+            // palette.json
+            var jsonObj = new Dictionary<string, object>
+            {
+                ["wallpaper"] = item.Path,
+                ["key"] = item.Key,
+                ["colors"] = pal.Select((hex, i) => new Dictionary<string, string>
+                {
+                    ["label"] = PaletteExtractor.Labels[i],
+                    ["hex"] = hex
+                }).ToList()
+            };
+            string json = JsonSerializer.Serialize(jsonObj, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(Path.Combine(exportDir, "palette.json"), json);
+
+            // palette.toml (alacritty-style)
+            var toml = new StringBuilder();
+            toml.AppendLine("[colors]");
+            toml.AppendLine("primary = {");
+            toml.AppendLine($"  background = \"{pal[4]}\","); // SURFACE as background
+            toml.AppendLine($"  foreground = \"{pal[0]}\","); // PRIMARY as foreground
+            toml.AppendLine("}");
+            toml.AppendLine("normal = {");
+            for (int i = 0; i < 5; i++)
+            {
+                string name = PaletteExtractor.Labels[i].ToLowerInvariant();
+                toml.AppendLine($"  {name} = \"{pal[i]}\",");
+            }
+            toml.AppendLine("}");
+            toml.AppendLine("bright = {");
+            for (int i = 0; i < 5; i++)
+            {
+                string name = PaletteExtractor.Labels[i].ToLowerInvariant();
+                toml.AppendLine($"  {name}_bright = \"{pal[i]}\",");
+            }
+            toml.AppendLine("}");
+            File.WriteAllText(Path.Combine(exportDir, "palette.toml"), toml.ToString());
+
+            ShowToast($"Palette exported to {exportDir}", 3000);
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Error("Palette export failed", ex);
+            ShowToast("Palette export failed", 2500);
+        }
     }
 
     private void ChooseFolder()
@@ -844,7 +1261,24 @@ public partial class MainWindow : Window
         BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
-    private void Window_Loaded(object sender, RoutedEventArgs e)
+    private static void ForceForegroundAndFocus(IntPtr hwnd)
+{
+    if (hwnd == IntPtr.Zero) return;
+    IntPtr foreground = GetForegroundWindow();
+    uint foregroundThread = GetWindowThreadProcessId(foreground, out _);
+    uint currentThread = GetCurrentThreadId();
+    if (foregroundThread != currentThread)
+    {
+        AttachThreadInput(foregroundThread, currentThread, true);
+    }
+    SetForegroundWindow(hwnd);
+    if (foregroundThread != currentThread)
+    {
+        AttachThreadInput(foregroundThread, currentThread, false);
+    }
+}
+
+private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (!_initialized)
         {
@@ -975,7 +1409,22 @@ public partial class MainWindow : Window
         return brush;
     }
 
-    private const uint SWP_NOZORDER = 0x0004;
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -987,4 +1436,52 @@ public partial class MainWindow : Window
         int cx,
         int cy,
         uint uFlags);
+
+    private void CollectionBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            string name = CollectionBox.Text.Trim();
+            if (name.Length > 0)
+            {
+                ToggleCollection(name);
+                if (_collectionMode == name || (_collectionMode == "all" && name.Length > 0))
+                {
+                    SetCollectionMode(name);
+                }
+            }
+            HideCollectionOverlay();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            HideCollectionOverlay();
+            e.Handled = true;
+        }
+    }
+
+    private void TagBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            string text = TagBox.Text.Trim();
+            var tags = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0)
+                .ToList();
+            if (_items.Count > 0 && _selected >= 0 && _selected < _items.Count)
+            {
+                _metaStore.SetTags(_items[_selected].Key, tags);
+                _metaStore.Flush();
+            }
+            ShowToast($"Tags: {(tags.Count > 0 ? string.Join(", ", tags) : "none")}");
+            HideTagOverlay();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            HideTagOverlay();
+            e.Handled = true;
+        }
+    }
 }

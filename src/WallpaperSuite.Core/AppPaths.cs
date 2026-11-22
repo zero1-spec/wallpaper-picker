@@ -33,6 +33,8 @@ public static class AppPaths
 
     public static string ConvertedDir => Path.Combine(DataDir, "converted");
 
+    public static string ExportDir => Path.Combine(DataDir, "export");
+
     /// <summary>Directory of the currently running exe/dll. Never hardcoded.</summary>
     public static string InstallDir => AppContext.BaseDirectory;
 

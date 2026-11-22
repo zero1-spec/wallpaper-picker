@@ -146,6 +146,26 @@ public partial class MainWindow
                 ChooseFolder();
                 e.Handled = true;
                 break;
+
+            case Key.E:
+                ExportPalette();
+                e.Handled = true;
+                break;
+
+            case Key.C:
+                ShowCollectionOverlay();
+                e.Handled = true;
+                break;
+
+            case Key.T:
+                ShowTagOverlay();
+                e.Handled = true;
+                break;
+
+            case Key.B:
+                CycleCollectionView();
+                e.Handled = true;
+                break;
         }
     }
 

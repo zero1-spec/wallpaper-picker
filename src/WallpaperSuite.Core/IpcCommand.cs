@@ -23,11 +23,13 @@ public static class IpcCommand
     public const string Resume = "resume";
     public const string TogglePause = "toggle-pause";
     public const string Set = "set";
+    public const string Video = "video";
+    public const string VideoStop = "video-stop";
     public const string Quit = "quit";
 
     public static readonly string[] All =
     {
-        Open, Next, Prev, Random, Pause, Resume, TogglePause, Set, Quit,
+        Open, Next, Prev, Random, Pause, Resume, TogglePause, Set, Video, VideoStop, Quit,
     };
 
     public static bool IsKnown(string command) => All.Contains(command, StringComparer.Ordinal);

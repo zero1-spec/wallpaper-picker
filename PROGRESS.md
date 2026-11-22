@@ -10,9 +10,11 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 ### Root
 - [x] .gitignore
 - [x] LICENSE (MIT)
-- [x] README.md (includes manual test checklist)
+- [x] README.md (rewritten: features, install, quick start, CLI, configuration, architecture, tech stack, performance, build, troubleshooting, roadmap, contributing, license; Release badge fixed to static; Screenshots merged; Tray menu updated with "Find duplicates" and "Start with Windows"; `--background` description corrected; Performance section now shows measured Windows 11 idle numbers ~13 MB private / ~47 MB working set / 0% CPU; wallpaper-picker repo URL; removed placeholder Screenshots line; verified claims: random/sequential mode correct, interval 1–1440 correct, SHA-256 correct, `random` CLI command correct)
+- [x] CONTRIBUTING.md (short: fork, branch, 0-error build, no polling)
 - [x] WallpaperSuite.sln (classic format, hand-written; all 3 projects verified via `dotnet sln list`)
 - [x] PROGRESS.md
+- [x] docs/screenshots/ (created with .gitkeep)
 
 ### src/WallpaperSuite.Core (net8.0-windows class library)
 - [x] WallpaperSuite.Core.csproj
@@ -60,6 +62,19 @@ PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 - second launch exits (code 0) and leaves the first instance running
 - published `wallpicker.exe` starts from the publish folder
 
+## Bug fixes
+- Build: removed duplicate `ForceForegroundAndFocus` body and misplaced DLL imports in `MainWindow.xaml.cs` (was causing `CS1519`/CS1022 compiler errors).
+- Picker focus: added `PickerFocus.Take(this)` after `Activate(); Focus();` in `ShowOnCursorMonitor`.
+- Hotkeys: `Alt+Shift+N`/`Alt+Shift+B` old defaults migrated to `Alt+Shift+Right`/`Alt+Shift+Left` via `ConfigVersion` gating (user-changed hotkeys never touched).
+- HotkeyManager: logs `registered <combo>` / `FAILED <combo> error <code>` for each registration.
+
+## Installer
+- `build\publish.ps1`: publishes Walld + WallPicker (Release, win-x64, self-contained, no single-file, no trimming) to `dist\WallpaperSuite`.
+- `installer\WallpaperSetup.iss`: Inno Setup 6, no admin, `{localappdata}\Programs\WallpaperSuite`, Start Menu shortcut, "Start with Windows" task ON by default (Run value `WallpaperSuite` = `"{app}\walld.exe" --background`), launches `walld.exe --background` post-install. Upgrade/uninstall run `walld.exe quit` + `taskkill wallpicker.exe`; uninstall removes Run value; `%APPDATA%\WallpaperPicker` always kept (no removal prompt — MsgBox constants incompatible with this Inno Setup version). `SetupIconFile` removed; `UninstallDisplayIcon` kept.
+- `build\build-installer.ps1`: runs publish.ps1 then `ISCC.exe` (checks `C:\Program Files (x86)\Inno Setup 6\` and `%LOCALAPPDATA%\Programs\Inno Setup 6\`; errors if missing).
+- Inno Setup 6.7.3 installed via `winget install --id JRSoftware.InnoSetup -e`; ISCC.exe at `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`.
+- Installer built: `installer\Output\WallpaperSetup-0.3.0.exe` (51,162,942 bytes ≈ 51 MB). `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
 ## Known issues
 - dotnet SDK 11 `dotnet new sln` produces .slnx; the classic WallpaperSuite.sln is hand-written.
 - .NET 8 NativeWindow.CreateHandle mangles/rejects custom CreateParams.ClassNames
@@ -77,6 +92,18 @@ PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
   `BitmapCacheOption.OnLoad` instead.
 - Windows may refuse `SetForegroundWindow` from a background process; second-instance activation
   attaches to the foreground thread's input queue to work around it.
+
+## Phase 3 checklist (Collections and Tags)
+- [x] Core: AppConfig ActiveCollection/Collections + ConfigVersion 2 migration
+- [x] Core: WallpaperLibrary.FilterByCollection helper
+- [x] MetaStore: Tags dictionary (key -> List<string>) in meta.json
+- [x] WallpaperEngine: filter PickNext by ActiveCollection
+- [x] WalldContext: Collection tray submenu to switch active collection
+- [x] Picker: key C collection add/remove overlay
+- [x] Picker: key T tag edit overlay
+- [x] Picker: key B cycle All/Favorites/collections
+- [x] Picker: search matches tags
+- [x] dotnet build = 0 errors / 0 warnings
 
 ## Phase 2 checklist
 - [x] Global hotkeys NextWallpaper / PreviousWallpaper (defaults Alt+Shift+Right / Alt+Shift+Left), editable in SettingsForm and config.json
@@ -140,3 +167,43 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net8.0-win
 16. [ ] Relaunching the picker while it is open focuses the existing window and the second process exits.
 17. [ ] Launching with no folder argument uses the saved `RootFolder`; with neither, a folder dialog appears once and is saved.
 18. [ ] Thumbnails persist in `%APPDATA%\WallpaperPicker\thumbs` and the second launch is faster.
+
+## Phase 4 checklist (Palette export and accent sync)
+- [x] Core: AppConfig SyncAccentColor + Clone + AppPaths ExportDir
+- [x] WallpaperApplier: ApplyAccentColor + ExtractPrimaryColor
+- [x] Picker: key E palette export (palette.css/json/toml) + toast
+- [x] Picker: accent sync in ApplyCurrent when SyncAccentColor
+- [x] SettingsForm: SyncAccentColor toggle
+- [x] WallpaperEngine: accent sync after Apply when SyncAccentColor
+- [x] dotnet build = 0 errors / 0 warnings
+
+## Phase 5 checklist (Day/Night wallpapers and smart pause)
+- [x] Core: AppConfig DayFolder/NightFolder/NightStart/NightEnd/PauseOnFullscreen/PauseOnBatterySaver + ConfigVersion 4 + Clone + EnsureDefaults clamping
+- [x] WinApi.cs: SHQueryUserNotificationState + GetSystemPowerStatus P/Invokes + QUERY_USER_NOTIFICATION_STATE enum + SYSTEM_POWER_STATUS struct
+- [x] SmartPause.cs: IsFullscreenRunning / IsBatterySaverOn / ShouldSkipTick (logs every skipped tick)
+- [x] WallpaperEngine: day/night folder selection in PickNext via GetActiveFolder + IsNightTime
+- [x] WalldContext: sleep-until-boundary timer (ComputeNextBoundary / ComputeNextDayNightTransition) + smart pause in OnAutoChangeTick
+- [x] SettingsForm: Pause on fullscreen app / Pause on battery saver checkboxes (default on)
+- [x] dotnet build = 0 errors / 0 warnings
+
+## Phase 6 checklist (Drag and drop and duplicate finder)
+- [x] Core: AppConfig ExtraFolders list + ConfigVersion 5 + Clone
+- [x] ImageScanner: multi-folder ScanAsync/Scan overload with dedup
+- [x] Picker: AllowDrop + DragEnter/Drop handlers; dropped paths added to ExtraFolders
+- [x] Picker: RescanFolders() scans RootFolder + ExtraFolders
+- [x] WalldContext: "Find duplicates" tray menu item + FindDuplicates() launcher
+- [x] DuplicateFinder.cs: background-thread scan + hash, ListView with checkboxes
+- [x] DuplicateFinder: "Send to Recycle Bin" with confirmation (SHFileOperation FOF_ALLOWUNDO)
+- [x] DuplicateFinder: missing entries from collections + history with "Remove from library"
+- [x] dotnet build = 0 errors / 0 warnings
+
+## Phase 7a checklist (Minimal video wallpaper, proof of concept)
+- [x] Core: AppConfig LiveWallpaperPath/LiveWallpaperEnabled + ConfigVersion 6 + Clone
+- [x] Core: IpcCommand Video + VideoStop commands
+- [x] WallVideo project: csproj, Program.cs (mutex entry), MainWindow.xaml.cs (MediaElement + WorkerW)
+- [x] Walld.csproj: copy-wallvideo-next-to-daemon target
+- [x] WallpaperSuite.sln: add WallVideo project
+- [x] WalldContext: tray items "Live wallpaper: set video..." / "Stop live wallpaper" + IPC video/video-stop + process lifecycle
+- [x] CommandRouter: video/video-stop dispatch
+- [x] Program.cs: video/video-stop known commands
+- [x] dotnet build = 0 errors / 0 warnings

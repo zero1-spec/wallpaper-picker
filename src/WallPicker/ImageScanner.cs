@@ -33,76 +33,98 @@ public static class ImageScanner
         return Task.Run(() => Scan(rootFolder, cancellationToken), cancellationToken);
     }
 
+    public static Task<List<WallpaperItem>> ScanAsync(IEnumerable<string> folders, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() => Scan(folders, cancellationToken), cancellationToken);
+    }
+
     public static List<WallpaperItem> Scan(string rootFolder, CancellationToken cancellationToken = default)
     {
+        return Scan(new[] { rootFolder }, cancellationToken);
+    }
+
+    public static List<WallpaperItem> Scan(IEnumerable<string> folders, CancellationToken cancellationToken = default)
+    {
         var items = new List<WallpaperItem>();
-        if (string.IsNullOrWhiteSpace(rootFolder))
-        {
-            return items;
-        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        try
-        {
-            if (!Directory.Exists(rootFolder))
-            {
-                return items;
-            }
-        }
-        catch (Exception ex) when (IsIoOrAccessException(ex))
-        {
-            return items;
-        }
-
-        var stack = new Stack<string>();
-        stack.Push(rootFolder);
-
-        while (stack.Count > 0)
+        foreach (string folder in folders)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string dir = stack.Pop();
-
-            IEnumerable<FileSystemInfo> entries;
-            try
-            {
-                entries = new DirectoryInfo(dir).EnumerateFileSystemInfos();
-            }
-            catch (Exception ex) when (IsIoOrAccessException(ex))
+            if (string.IsNullOrWhiteSpace(folder))
             {
                 continue;
             }
 
             try
             {
-                foreach (FileSystemInfo entry in entries)
+                if (!Directory.Exists(folder))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    try
-                    {
-                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                        {
-                            continue;
-                        }
-
-                        if (entry is DirectoryInfo subDir)
-                        {
-                            stack.Push(subDir.FullName);
-                        }
-                        else if (entry is FileInfo file && SupportedExtensions.Contains(file.Extension))
-                        {
-                            long mtimeNs = (file.LastWriteTimeUtc - UnixEpochUtc).Ticks * 100L;
-                            items.Add(new WallpaperItem(file.FullName, file.Name, file.Length, mtimeNs));
-                        }
-                    }
-                    catch (Exception ex) when (IsIoOrAccessException(ex))
-                    {
-                        // Skip unreadable files or directories silently.
-                    }
+                    continue;
                 }
             }
             catch (Exception ex) when (IsIoOrAccessException(ex))
             {
-                // Skip directory if enumeration fails mid-stream.
+                continue;
+            }
+
+            var stack = new Stack<string>();
+            stack.Push(folder);
+
+            while (stack.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string dir = stack.Pop();
+
+                IEnumerable<FileSystemInfo> entries;
+                try
+                {
+                    entries = new DirectoryInfo(dir).EnumerateFileSystemInfos();
+                }
+                catch (Exception ex) when (IsIoOrAccessException(ex))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    foreach (FileSystemInfo entry in entries)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        try
+                        {
+                            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                            {
+                                continue;
+                            }
+
+                            if (entry is DirectoryInfo subDir)
+                            {
+                                stack.Push(subDir.FullName);
+                            }
+                            else if (entry is FileInfo file && SupportedExtensions.Contains(file.Extension))
+                            {
+                                if (seen.Contains(file.FullName))
+                                {
+                                    continue;
+                                }
+                                seen.Add(file.FullName);
+
+                                long mtimeNs = (file.LastWriteTimeUtc - UnixEpochUtc).Ticks * 100L;
+                                items.Add(new WallpaperItem(file.FullName, file.Name, file.Length, mtimeNs));
+                            }
+                        }
+                        catch (Exception ex) when (IsIoOrAccessException(ex))
+                        {
+                            // Skip unreadable files or directories silently.
+                        }
+                    }
+                }
+                catch (Exception ex) when (IsIoOrAccessException(ex))
+                {
+                    // Skip directory if enumeration fails mid-stream.
+                }
             }
         }
 

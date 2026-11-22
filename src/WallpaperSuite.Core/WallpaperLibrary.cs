@@ -151,6 +151,29 @@ public static class WallpaperLibrary
         }
     }
 
+    /// <summary>Filters files to those whose path is in <paramref name="allowedPaths"/>; empty set means keep all.</summary>
+    public static List<WallpaperFile> FilterByCollection(List<WallpaperFile> files, IReadOnlyList<string>? allowedPaths)
+    {
+        if (allowedPaths is null || allowedPaths.Count == 0)
+        {
+            return files;
+        }
+
+        var result = new List<WallpaperFile>(files.Count);
+        foreach (WallpaperFile file in files)
+        {
+            foreach (string allowed in allowedPaths)
+            {
+                if (string.Equals(file.Path, allowed, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Add(file);
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
     private static bool IsIoOrAccessException(Exception ex) => ex is IOException
         or UnauthorizedAccessException
         or System.Security.SecurityException

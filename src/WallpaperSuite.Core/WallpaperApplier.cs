@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 
@@ -169,6 +172,121 @@ public static class WallpaperApplier
             SimpleLogger.Error($"Failed converting '{sourcePath}' to PNG", ex);
             error = $"Could not convert {Path.GetExtension(sourcePath)} image";
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Sets the Windows DWM accent color from a hex color string (#RRGGBB).
+    /// Writes HKCU\Software\Microsoft\Windows\DWM\AccentColor and ColorizationColor
+    /// as DWORD values in BGR format (0x00BBGGRR). Current user only, no admin required.
+    /// </summary>
+    public static bool ApplyAccentColor(string hexColor, out string? error)
+    {
+        error = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(hexColor))
+            {
+                error = "Empty accent color";
+                return false;
+            }
+
+            var c = hexColor.Trim();
+            if (c.StartsWith("#"))
+                c = c[1..];
+            if (c.Length != 6)
+            {
+                error = $"Invalid accent color '{hexColor}' (expected #RRGGBB)";
+                return false;
+            }
+
+            int r = int.Parse(c.Substring(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            int g = int.Parse(c.Substring(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            int b = int.Parse(c.Substring(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
+            // Windows stores accent color as DWORD in BGR: 0x00BBGGRR
+            int bgr = (b << 16) | (g << 8) | r;
+
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM", writable: true);
+            if (key is null)
+            {
+                error = "Cannot open HKCU DWM registry key";
+                return false;
+            }
+
+            key.SetValue("AccentColor", bgr, RegistryValueKind.DWord);
+            key.SetValue("ColorizationColor", bgr, RegistryValueKind.DWord);
+
+            SimpleLogger.Info($"Applied accent color #{c}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            SimpleLogger.Error("Failed to apply accent color", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Samples an image and returns a representative primary color as #RRGGBB,
+    /// or null when the image cannot be read.
+    /// </summary>
+    public static string? ExtractPrimaryColor(string imagePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+                return null;
+
+            using var fs = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.StreamSource = fs;
+            bi.EndInit();
+            bi.Freeze();
+
+            int sampleW = Math.Min(bi.PixelWidth, 64);
+            int sampleH = Math.Min(bi.PixelHeight, 64);
+            if (sampleW <= 0 || sampleH <= 0)
+                return null;
+
+            var bgra = new FormatConvertedBitmap(bi, PixelFormats.Bgra32, null, 0);
+            int stride = bi.PixelWidth * 4;
+            var rowBuffer = new byte[stride];
+
+            long totalR = 0, totalG = 0, totalB = 0, count = 0;
+
+            for (int y = 0; y < sampleH; y++)
+            {
+                int sy = y * bi.PixelHeight / sampleH;
+                bgra.CopyPixels(new Int32Rect(0, sy, bi.PixelWidth, 1), rowBuffer, stride, 0);
+
+                for (int x = 0; x < sampleW; x++)
+                {
+                    int sx = x * bi.PixelWidth / sampleW;
+                    int offset = sx * 4;
+                    totalB += rowBuffer[offset];
+                    totalG += rowBuffer[offset + 1];
+                    totalR += rowBuffer[offset + 2];
+                    count++;
+                }
+            }
+
+            if (count == 0)
+                return null;
+
+            int avgR = (int)(totalR / count);
+            int avgG = (int)(totalG / count);
+            int avgB = (int)(totalB / count);
+
+            return $"#{avgR:X2}{avgG:X2}{avgB:X2}";
+        }
+        catch
+        {
+            return null;
         }
     }
 }

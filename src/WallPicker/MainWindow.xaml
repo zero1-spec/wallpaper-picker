@@ -18,7 +18,10 @@
         SizeChanged="Window_SizeChanged"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
-        Closed="Window_Closed">
+        Closed="Window_Closed"
+        AllowDrop="True"
+        DragEnter="Window_DragEnter"
+        Drop="Window_Drop">
     <Grid x:Name="RootGrid" Background="#0C0C10">
         <!-- Background layers: old image below, new image cross-fades in on top. -->
         <Image x:Name="BgOldImage"
@@ -151,10 +154,78 @@
             </Grid>
         </Border>
 
+        <!-- Collection overlay (C key): add/remove centered wallpaper to/from a collection. -->
+        <Border x:Name="CollectionHost"
+                Width="360"
+                Height="40"
+                Margin="30,78,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="#EB1E1E22"
+                BorderBrush="#AA7C5BFF"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="14,0"
+                Visibility="Collapsed"
+                Panel.ZIndex="10">
+            <Grid>
+                <TextBlock x:Name="CollectionPlaceholder"
+                           Text="collection name..."
+                           Foreground="#7A7A88"
+                           FontFamily="Segoe UI, Arial"
+                           FontSize="15"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
+                <TextBox x:Name="CollectionBox"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="#E6E6EE"
+                         CaretBrush="#E6E6EE"
+                         FontFamily="Segoe UI, Arial"
+                         FontSize="15"
+                         VerticalContentAlignment="Center"
+                         KeyDown="CollectionBox_KeyDown" />
+            </Grid>
+        </Border>
+
+        <!-- Tag overlay (T key): comma-separated tags for centered wallpaper. -->
+        <Border x:Name="TagHost"
+                Width="360"
+                Height="40"
+                Margin="30,128,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Background="#EB1E1E22"
+                BorderBrush="#AA5B8CFF"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="14,0"
+                Visibility="Collapsed"
+                Panel.ZIndex="10">
+            <Grid>
+                <TextBlock x:Name="TagPlaceholder"
+                           Text="tags (comma separated)..."
+                           Foreground="#7A7A88"
+                           FontFamily="Segoe UI, Arial"
+                           FontSize="15"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
+                <TextBox x:Name="TagBox"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="#E6E6EE"
+                         CaretBrush="#E6E6EE"
+                         FontFamily="Segoe UI, Arial"
+                         FontSize="15"
+                         VerticalContentAlignment="Center"
+                         KeyDown="TagBox_KeyDown" />
+            </Grid>
+        </Border>
+
         <!-- Bottom hint + status bar. -->
         <Grid VerticalAlignment="Bottom" Margin="30,0,30,14">
             <TextBlock x:Name="HintText"
-                       Text="&#x2190; &#x2192; move   Enter set   / search   F fav   V favs   R random   M fit   O folder   Esc close"
+                       Text="&#x2190; &#x2192; move   Enter set   / search   C collection   T tags   B cycle   F fav   V favs   R random   M fit   O folder   Esc close"
                        Foreground="#8CFFFFFF"
                        FontFamily="JetBrains Mono, Cascadia Mono, Consolas"
                        FontSize="13"

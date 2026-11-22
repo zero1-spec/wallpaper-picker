@@ -130,7 +130,7 @@ internal sealed record CliOptions(string? Command, string? Argument, bool IsBack
             if (IpcCommand.IsKnown(candidate))
             {
                 command = candidate;
-                if (command == IpcCommand.Set)
+                if (command == IpcCommand.Set || command == IpcCommand.Video)
                 {
                     if (rest.Length >= 2)
                     {
@@ -138,14 +138,14 @@ internal sealed record CliOptions(string? Command, string? Argument, bool IsBack
                     }
                     else
                     {
-                        SimpleLogger.Warn("set command requires a file path argument");
+                        SimpleLogger.Warn($"{command} command requires a file path argument");
                     }
                 }
             }
             else
             {
-                SimpleLogger.Warn(
-                    $"unknown argument '{rest[0]}'; usage: walld [open|next|prev|random|pause|resume|toggle-pause|set <path>|quit] [--background]");
+                    SimpleLogger.Warn(
+                        $"unknown argument '{rest[0]}'; usage: walld [open|next|prev|random|pause|resume|toggle-pause|set <path>|video <path>|video-stop|quit] [--background]");
             }
         }
 
