@@ -10,7 +10,7 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 ### Root
 - [x] .gitignore
 - [x] LICENSE (MIT)
-- [x] README.md (polished: centered HTML header with assets/icon.png width 110 + for-the-badge badge row + Download v0.3.0 badge; plain HTML screenshots with picker.png hero width 100% max 900 + tray.png width 320 below; compact centered TOC line; "At a glance" hotkey table with <kbd> tags; <code> in <summary> titles; ~270 lines)
+- [x] README.md (polished: centered HTML header with assets/icon.png width 110 + for-the-badge badge row + Download v0.4.0 badge; plain HTML screenshots with picker.png hero width 100% max 900 + tray.png width 320 below; compact centered TOC line; "At a glance" hotkey table with <kbd> tags; <code> in <summary> titles; ~270 lines)
 - [x] CONTRIBUTING.md (short: fork, branch, 0-error build, no polling)
 - [x] WallpaperSuite.sln (classic format, hand-written; all 3 projects verified via `dotnet sln list`)
 - [x] PROGRESS.md
@@ -73,7 +73,7 @@ PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 - `installer\WallpaperSetup.iss`: Inno Setup 6, no admin, `{localappdata}\Programs\WallpaperSuite`, Start Menu shortcut, "Start with Windows" task ON by default (Run value `WallpaperSuite` = `"{app}\walld.exe" --background`), launches `walld.exe --background` post-install. Upgrade/uninstall run `walld.exe quit` + `taskkill wallpicker.exe`; uninstall removes Run value; `%APPDATA%\WallpaperPicker` always kept (no removal prompt — MsgBox constants incompatible with this Inno Setup version). `SetupIconFile` removed; `UninstallDisplayIcon` kept.
 - `build\build-installer.ps1`: runs publish.ps1 then `ISCC.exe` (checks `C:\Program Files (x86)\Inno Setup 6\` and `%LOCALAPPDATA%\Programs\Inno Setup 6\`; errors if missing).
 - Inno Setup 6.7.3 installed via `winget install --id JRSoftware.InnoSetup -e`; ISCC.exe at `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`.
-- Installer built: `installer\Output\WallpaperSetup-0.3.0.exe` (51,162,942 bytes ≈ 51 MB). `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+- Installer built: `installer\Output\WallpaperSetup-0.4.0.exe` (51,177,444 bytes ≈ 51 MB). `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 
 ## Known issues
 - dotnet SDK 11 `dotnet new sln` produces .slnx; the classic WallpaperSuite.sln is hand-written.

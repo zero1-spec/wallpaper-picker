@@ -10,14 +10,14 @@ Lightweight, fully offline wallpaper manager for Windows. A background tray daem
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
 <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue?style=for-the-badge&logo=dotnet" alt=".NET 8"></a>
 <img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.3.0-green?style=for-the-badge" alt="Version 0.3.0">
+<img src="https://img.shields.io/badge/Version-0.4.0-green?style=for-the-badge" alt="Version 0.4.0">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
 <img src="https://img.shields.io/badge/Offline-Yes-green?style=for-the-badge" alt="Offline">
 </p>
 
 <p>
-<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.3.0-blue?style=for-the-badge" alt="Download v0.3.0"></a>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.4.0-blue?style=for-the-badge" alt="Download v0.4.0"></a>
 </p>
 
 <p>
@@ -77,7 +77,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 
 ## Install
 
-1. Download `WallpaperSetup-0.3.0.exe` from Releases.
+1. Download `WallpaperSetup-0.4.0.exe` from Releases.
 2. Run it. The installer is per-user (`%LOCALAPPDATA%\Programs\WallpaperSuite`) — **no administrator rights needed**. "Start with Windows" is checked by default.
 3. The publish is self-contained (`.NET 8 runtime bundled`), so you do **not** need to install .NET separately.
 4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
@@ -204,7 +204,7 @@ Options with **no Settings UI yet**: DayFolder/NightFolder times, ExtraFolders, 
 
 ## Performance
 
-Measured on Windows 11, idle, ~5 seconds after `walld.exe --background` start (installed 0.3.0 build, no `config.json` present):
+Measured on Windows 11, idle, ~5 seconds after `walld.exe --background` start (installed 0.4.0 build, no `config.json` present):
 
 | Metric | Value |
 |--------|-------|
@@ -239,7 +239,7 @@ To build the installer:
 .\build\build-installer.ps1
 ```
 
-Output: `installer\Output\WallpaperSetup-0.3.0.exe`.
+Output: `installer\Output\WallpaperSetup-0.4.0.exe`.
 
 <details>
 <summary>Architecture / Project structure</summary>
