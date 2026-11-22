@@ -1,19 +1,23 @@
 <div align="center">
 
-<img src="assets/icon.png" width="120" alt="WallpaperSuite icon">
+<img src="assets/icon.png" width="110" alt="WallpaperSuite icon">
 
 # WallpaperSuite
 
 Lightweight, fully offline wallpaper manager for Windows. A background tray daemon applies wallpapers on schedule or hotkey; a WPF arc-carousel picker opens only when you need it.
 
 <p>
-<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
-<a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue.svg?style=flat-square&logo=dotnet" alt=".NET 8"></a>
-<img src="https://img.shields.io/badge/Windows-11%20(tested)%20|%2010%20(1607%2B)-blue.svg?style=flat-square&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.3.0-green.svg?style=flat-square" alt="Version 0.3.0">
-<img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue.svg?style=flat-square" alt="RAM ~13 MB idle">
-<img src="https://img.shields.io/badge/Admin-No-green.svg?style=flat-square" alt="No admin needed">
-<img src="https://img.shields.io/badge/Offline-Yes-green.svg?style=flat-square" alt="Offline">
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
+<a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue?style=for-the-badge&logo=dotnet" alt=".NET 8"></a>
+<img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
+<img src="https://img.shields.io/badge/Version-0.3.0-green?style=for-the-badge" alt="Version 0.3.0">
+<img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
+<img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
+<img src="https://img.shields.io/badge/Offline-Yes-green?style=for-the-badge" alt="Offline">
+</p>
+
+<p>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.3.0-blue?style=for-the-badge" alt="Download v0.3.0"></a>
 </p>
 
 <p>
@@ -30,33 +34,30 @@ Lightweight, fully offline wallpaper manager for Windows. A background tray daem
 
 ## Screenshots
 
+<img src="docs/screenshots/picker.png" width="100%" style="max-width:900px;" alt="Picker">
+
+Picker: arc-carousel wallpaper browser with palette, favorites, and search.
+
+<img src="docs/screenshots/tray.png" width="320" alt="Tray">
+
+Tray: system tray menu with auto-change, collections, and live wallpaper controls.
+
+---
+
+## At a glance
+
 | | |
 |-|-|
-| <img src="docs/screenshots/picker.png" width="800" alt="Picker"> | <img src="docs/screenshots/tray.png" width="400" alt="Tray"> |
-| **Picker** — arc-carousel wallpaper browser with palette, favorites, and search. | **Tray** — system tray menu with auto-change, collections, and live wallpaper controls. |
-
-## Table of Contents
-
-- [Why WallpaperSuite?](#why-wallpapersuite)
-- [Features](#features)
-- [Install](#install)
-- [Quick start](#quick-start)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Tray menu](#tray-menu)
-- [Configuration](#configuration)
-- [Performance](#performance)
-- [Build from source](#build-from-source)
-- [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> | Open picker |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Right</kbd> | Next wallpaper |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Left</kbd> | Previous wallpaper |
 
 ## Why WallpaperSuite?
 
 - **Light.** The daemon idles at ~13 MB private memory and 0% CPU — no polling, timers run only when needed.
 - **Offline.** No network ports, no local server, no accounts. Everything runs on your PC.
 - **No admin.** Installs per-user to `%LOCALAPPDATA%\Programs\WallpaperSuite`. Uninstall keeps your data.
-- **Hotkey-first.** Global hotkeys for open, next, previous, pause — editable in Settings without breaking updates.
+- **Hotkey-first.** Global hotkeys for open, next, previous, pause — editable in Settings.
 - **Picker on demand.** The WPF picker closes after you apply or press Esc; it does not stay resident.
 
 ## Features
@@ -153,7 +154,7 @@ Open the picker with the tray menu or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W
 Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Collection** submenu, **Find duplicates…**, **Auto change** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
 
 <details>
-<summary>CLI commands (`walld.exe`)</summary>
+<summary>CLI commands walld.exe</summary>
 
 | Command | Effect |
 |---------|--------|
@@ -200,38 +201,6 @@ Important `config.json` options:
 | `FitMode` | fill / fit / stretch / center / tile |
 
 Options with **no Settings UI yet**: DayFolder/NightFolder times, ExtraFolders, ActiveCollection — edit `config.json` directly while the daemon is not running.
-
-<details>
-<summary>Configuration files and options</summary>
-
-User data lives in `%APPDATA%\WallpaperPicker`:
-
-| File / folder | Purpose |
-|---------------|---------|
-| `config.json` | All settings |
-| `history.json` | Last 50 applied wallpapers |
-| `collections.json` | User-defined collections (name → paths) |
-| `meta.json` | Thumbnails and per-wallpaper tags |
-| `thumbs/` | Thumbnail cache |
-| `export/` | Palette exports (`palette.css`, `palette.json`, `palette.toml`) |
-| `converted/` | Non-native images converted to PNG |
-| `logs/walld.log` | Daemon log |
-
-Important `config.json` options:
-
-| Option | Meaning |
-|--------|---------|
-| `RootFolder` | Main wallpaper folder |
-| `ExtraFolders` | Additional folders from drag-and-drop |
-| `DayFolder` / `NightFolder` | Day/night auto-change folders (optional) |
-| `NightStart` / `NightEnd` | Night window hours:minutes (default 19:00–07:00) |
-| `ActiveCollection` | Collection name for auto-change filtering (empty = all) |
-| `SyncAccentColor` | Sync Windows accent from wallpaper primary color (default off) |
-| `PauseOnFullscreen` / `PauseOnBatterySaver` | Smart pause (default on) |
-| `AutoChangeIntervalMinutes` | Auto-change interval, 1–1440 (default 30) |
-| `FitMode` | fill / fit / stretch / center / tile |
-
-</details>
 
 ## Performance
 

@@ -10,7 +10,7 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 ### Root
 - [x] .gitignore
 - [x] LICENSE (MIT)
-- [x] README.md (redesigned: centered HTML header block with assets/icon.png (120px) + badges row + quick links; hero screenshot picker.png width 800 + tray.png side-by-side table; Table of Contents; "Why WallpaperSuite?" section; Features as 2-column table with emoji; <kbd> tags in shortcut tables; collapsible <details> blocks for picker shortcuts, CLI commands, config, architecture, troubleshooting; Install with numbered steps + SmartScreen callouts; Performance table with measured numbers; Roadmap checkbox list; Contributing + License footer + centered "Made with .NET"; platform wording "Windows 11 (tested) / Windows 10 (1607+ not tested)" everywhere; ~342 lines)
+- [x] README.md (polished: centered HTML header with assets/icon.png width 110 + for-the-badge badge row + Download v0.3.0 badge; plain HTML screenshots with picker.png hero width 100% max 900 + tray.png width 320 below; compact centered TOC line; "At a glance" hotkey table with <kbd> tags; <code> in <summary> titles; ~270 lines)
 - [x] CONTRIBUTING.md (short: fork, branch, 0-error build, no polling)
 - [x] WallpaperSuite.sln (classic format, hand-written; all 3 projects verified via `dotnet sln list`)
 - [x] PROGRESS.md
