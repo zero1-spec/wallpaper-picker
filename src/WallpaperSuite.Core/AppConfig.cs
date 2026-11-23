@@ -85,8 +85,44 @@ public sealed class AppConfig
     /// <summary>Last video path used for live wallpaper.</summary>
     public string LiveWallpaperPath { get; set; } = "";
 
-    /// <summary>When true, the live wallpaper should be playing (restored at boot is NOT done yet).</summary>
+    /// <summary>When true, the live wallpaper is playing; the daemon restores it at startup.</summary>
     public bool LiveWallpaperEnabled { get; set; }
+
+    public const string MonitorModeSame = "same";
+    public const string MonitorModePerMonitor = "per-monitor";
+
+    /// <summary>Include the wallpapers shipped in the install folder (<c>wallpapers\</c>) in the library.</summary>
+    public bool IncludeBuiltInWallpapers { get; set; } = true;
+
+    /// <summary>When true (and a Day or Night folder is set), auto-change uses the day/night folders.</summary>
+    public bool DayNightEnabled { get; set; }
+
+    /// <summary>"same" = one wallpaper on every screen; "per-monitor" = a different wallpaper per screen.</summary>
+    public string MonitorMode { get; set; } = MonitorModeSame;
+
+    /// <summary>Switch Windows light/dark mode to match the brightness of the applied wallpaper.</summary>
+    public bool ThemeFollowsWallpaper { get; set; }
+
+    /// <summary>Opt-in: download and apply Bing's wallpaper of the day (the only feature that uses the internet).</summary>
+    public bool DailyWallpaperEnabled { get; set; }
+
+    /// <summary>Bing start date (yyyyMMdd) of the last wallpaper of the day that was applied.</summary>
+    public string DailyWallpaperLastDate { get; set; } = "";
+
+    /// <summary>Full paths the user chose "Never show again" for; Next/auto-change skip them.</summary>
+    public List<string> Excluded { get; set; } = [];
+
+    /// <summary>True when day/night switching is on and at least one of the two folders is set.</summary>
+    public bool IsDayNightActive()
+        => DayNightEnabled && (!string.IsNullOrWhiteSpace(DayFolder) || !string.IsNullOrWhiteSpace(NightFolder));
+
+    public bool IsExcluded(string? path)
+        => !string.IsNullOrWhiteSpace(path)
+            && (Excluded ?? []).Contains(path, StringComparer.OrdinalIgnoreCase);
+
+    public bool IsFavorite(string? path)
+        => !string.IsNullOrWhiteSpace(path)
+            && (Favorites ?? []).Contains(path, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Config schema version. Bumped when EnsureDefaults migration logic changes.</summary>
     public int ConfigVersion { get; set; }
@@ -164,6 +200,28 @@ foreach (var (action, spec) in DefaultHotkeys())
             ConfigVersion = 6;
         }
 
+        // 0.5.0: built-in wallpapers, explicit day/night switch, multi-monitor,
+        // theme sync, wallpaper of the day, "never show again" list.
+        if (ConfigVersion < 7)
+        {
+            // Older configs used day/night whenever a folder was set; keep that behaviour.
+            DayNightEnabled = !string.IsNullOrWhiteSpace(DayFolder) || !string.IsNullOrWhiteSpace(NightFolder);
+            ConfigVersion = 7;
+        }
+
+        if (MonitorMode is not (MonitorModeSame or MonitorModePerMonitor))
+        {
+            MonitorMode = MonitorModeSame;
+        }
+
+        Excluded ??= [];
+        ExtraFolders ??= [];
+        Collections ??= [];
+        DailyWallpaperLastDate ??= "";
+        DayFolder ??= "";
+        NightFolder ??= "";
+        RootFolder ??= "";
+
 if (AutoChangeIntervalMinutes < 1)
         {
             AutoChangeIntervalMinutes = 1;
@@ -223,5 +281,13 @@ if (AutoChangeIntervalMinutes < 1)
         ExtraFolders = [.. ExtraFolders],
         LiveWallpaperPath = LiveWallpaperPath,
         LiveWallpaperEnabled = LiveWallpaperEnabled,
+        IncludeBuiltInWallpapers = IncludeBuiltInWallpapers,
+        DayNightEnabled = DayNightEnabled,
+        MonitorMode = MonitorMode,
+        ThemeFollowsWallpaper = ThemeFollowsWallpaper,
+        DailyWallpaperEnabled = DailyWallpaperEnabled,
+        DailyWallpaperLastDate = DailyWallpaperLastDate,
+        Excluded = [.. Excluded ?? []],
+        ConfigVersion = ConfigVersion,
     };
 }

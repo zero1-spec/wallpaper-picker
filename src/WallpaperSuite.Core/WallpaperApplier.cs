@@ -55,27 +55,11 @@ public static class WallpaperApplier
 
         try
         {
-            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            if (!TryPrepareTarget(sourcePath, cacheKey, out string fullPath, out errorMessage))
             {
-                errorMessage = "Wallpaper file not found";
                 return false;
             }
 
-            string targetPath = sourcePath;
-            string ext = Path.GetExtension(sourcePath);
-
-            if (!NativeExtensions.Contains(ext))
-            {
-                if (!TryConvertToPng(sourcePath, cacheKey, out string convertedPath, out string convertError))
-                {
-                    errorMessage = convertError;
-                    return false;
-                }
-
-                targetPath = convertedPath;
-            }
-
-            string fullPath = Path.GetFullPath(targetPath);
             (string style, string tile) = GetRegistryValues(fitMode);
 
             using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop", writable: true))
@@ -116,6 +100,129 @@ public static class WallpaperApplier
         }
     }
 
+    /// <summary>
+    /// Applies a wallpaper to a single monitor (per-monitor mode). Same
+    /// conversion and history rules as <see cref="Apply"/>.
+    /// </summary>
+    public static bool ApplyToMonitor(
+        string sourcePath,
+        string monitorId,
+        string? fitMode,
+        string? cacheKey,
+        out string? errorMessage,
+        bool recordHistory = true)
+    {
+        errorMessage = null;
+        try
+        {
+            if (!TryPrepareTarget(sourcePath, cacheKey, out string fullPath, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!MonitorWallpaper.SetWallpaper(monitorId, fullPath, fitMode, out errorMessage))
+            {
+                return false;
+            }
+
+            SimpleLogger.Info($"Applied wallpaper '{sourcePath}' to monitor {ShortMonitorId(monitorId)} (mode={fitMode ?? "fill"})");
+            if (recordHistory)
+            {
+                HistoryStore.Record(sourcePath);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Error($"WallpaperApplier failed for '{sourcePath}' on monitor", ex);
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Average perceived brightness of an image, 0 (black) to 1 (white), or
+    /// null when it cannot be decoded. Decodes a 64 px wide copy, so it is cheap.
+    /// </summary>
+    public static double? ComputeBrightness(string imagePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                return null;
+            }
+
+            BitmapImage bi;
+            using (var fs = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                bi = new BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = BitmapCacheOption.OnLoad;
+                bi.DecodePixelWidth = 64;
+                bi.StreamSource = fs;
+                bi.EndInit();
+                bi.Freeze();
+            }
+
+            var bgra = new FormatConvertedBitmap(bi, PixelFormats.Bgra32, null, 0);
+            int w = bgra.PixelWidth;
+            int h = bgra.PixelHeight;
+            if (w <= 0 || h <= 0)
+            {
+                return null;
+            }
+
+            var pixels = new byte[w * h * 4];
+            bgra.CopyPixels(pixels, w * 4, 0);
+
+            double total = 0;
+            for (int i = 0; i < pixels.Length; i += 4)
+            {
+                // Rec. 709 luma on 0..255 sRGB values.
+                total += 0.0722 * pixels[i] + 0.7152 * pixels[i + 1] + 0.2126 * pixels[i + 2];
+            }
+
+            return total / (w * h) / 255.0;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ShortMonitorId(string monitorId)
+        => monitorId.Length <= 24 ? monitorId : "…" + monitorId[^20..];
+
+    /// <summary>Resolves the file Windows should load: the source itself, or a PNG conversion for .webp etc.</summary>
+    private static bool TryPrepareTarget(string sourcePath, string? cacheKey, out string fullPath, out string? errorMessage)
+    {
+        fullPath = string.Empty;
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            errorMessage = "Wallpaper file not found";
+            return false;
+        }
+
+        string targetPath = sourcePath;
+        if (!NativeExtensions.Contains(Path.GetExtension(sourcePath)))
+        {
+            if (!TryConvertToPng(sourcePath, cacheKey, out string convertedPath, out string convertError))
+            {
+                errorMessage = convertError;
+                return false;
+            }
+
+            targetPath = convertedPath;
+        }
+
+        fullPath = Path.GetFullPath(targetPath);
+        return true;
+    }
+
     private static bool TryConvertToPng(string sourcePath, string? cacheKey, out string pngPath, out string error)
     {
         pngPath = string.Empty;
@@ -125,7 +232,11 @@ public static class WallpaperApplier
         {
             Directory.CreateDirectory(AppPaths.ConvertedDir);
 
-            foreach (string oldFile in Directory.EnumerateFiles(AppPaths.ConvertedDir, "converted_*.png"))
+            // Keep the few most recent conversions: in per-monitor mode several
+            // converted files can be on screen at once.
+            foreach (string oldFile in Directory.EnumerateFiles(AppPaths.ConvertedDir, "converted_*.png")
+                         .OrderByDescending(File.GetLastWriteTimeUtc)
+                         .Skip(8))
             {
                 try
                 {

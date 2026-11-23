@@ -8,6 +8,12 @@ public sealed class HistoryData
 
     /// <summary>Position of the currently applied entry, or -1 when unknown.</summary>
     public int Index { get; set; } = -1;
+
+    /// <summary>Per-monitor mode: applied sets (monitor id -> path), oldest first.</summary>
+    public List<Dictionary<string, string>> Sets { get; set; } = [];
+
+    /// <summary>Position of the current set in <see cref="Sets"/>, or -1.</summary>
+    public int SetIndex { get; set; } = -1;
 }
 
 /// <summary>
@@ -101,9 +107,79 @@ public static class HistoryStore
         }
     }
 
+    /// <summary>
+    /// Per-monitor mode: records what is now on every screen so Previous can
+    /// restore the whole arrangement. Same forward-branch rules as <see cref="Record"/>.
+    /// </summary>
+    public static void RecordSet(IReadOnlyDictionary<string, string> monitorPaths)
+    {
+        if (monitorPaths.Count == 0)
+        {
+            return;
+        }
+
+        lock (Gate)
+        {
+            HistoryData data = LoadNormalized();
+            if (data.SetIndex >= 0 && data.SetIndex < data.Sets.Count - 1)
+            {
+                data.Sets.RemoveRange(data.SetIndex + 1, data.Sets.Count - data.SetIndex - 1);
+            }
+
+            data.Sets.Add(new Dictionary<string, string>(monitorPaths, StringComparer.OrdinalIgnoreCase));
+            if (data.Sets.Count > MaxEntries)
+            {
+                data.Sets.RemoveRange(0, data.Sets.Count - MaxEntries);
+            }
+
+            data.SetIndex = data.Sets.Count - 1;
+            Store.Save(data);
+        }
+    }
+
+    /// <summary>Per-monitor mode: steps back one set and returns it, or null at the oldest set.</summary>
+    public static Dictionary<string, string>? PreviousSet()
+    {
+        lock (Gate)
+        {
+            HistoryData data = LoadNormalized();
+            if (data.SetIndex <= 0)
+            {
+                return null;
+            }
+
+            data.SetIndex--;
+            Store.Save(data);
+            return data.Sets[data.SetIndex];
+        }
+    }
+
+    /// <summary>Per-monitor mode: the set currently on screen, or null.</summary>
+    public static Dictionary<string, string>? CurrentSet
+    {
+        get
+        {
+            lock (Gate)
+            {
+                HistoryData data = LoadNormalized();
+                return data.SetIndex >= 0 ? data.Sets[data.SetIndex] : null;
+            }
+        }
+    }
+
     private static HistoryData LoadNormalized()
     {
         HistoryData data = Store.Load();
+        data.Sets ??= [];
+        if (data.Sets.Count == 0)
+        {
+            data.SetIndex = -1;
+        }
+        else if (data.SetIndex < 0 || data.SetIndex >= data.Sets.Count)
+        {
+            data.SetIndex = data.Sets.Count - 1;
+        }
+
         data.Paths ??= [];
         if (data.Paths.Count == 0)
         {

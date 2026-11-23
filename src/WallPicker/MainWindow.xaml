@@ -34,8 +34,9 @@
                Opacity="0"
                IsHitTestVisible="False" />
 
-        <!-- Scrims: uniform darkening plus top/bottom gradients. -->
-        <Rectangle Fill="#64000000" IsHitTestVisible="False" />
+        <!-- Scrims: uniform darkening plus top/bottom gradients. The background itself is a
+             blurred copy of the wallpaper (frosted glass), made on the background thread. -->
+        <Rectangle Fill="#50000000" IsHitTestVisible="False" />
         <Rectangle IsHitTestVisible="False">
             <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -222,24 +223,35 @@
             </Grid>
         </Border>
 
-        <!-- Bottom hint + status bar. -->
-        <Grid VerticalAlignment="Bottom" Margin="30,0,30,14">
-            <TextBlock x:Name="HintText"
-                       Text="&#x2190; &#x2192; move   Enter set   / search   C collection   T tags   B cycle   F fav   V favs   R random   M fit   O folder   Esc close"
-                       Foreground="#8CFFFFFF"
-                       FontFamily="JetBrains Mono, Cascadia Mono, Consolas"
-                       FontSize="13"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       IsHitTestVisible="False" />
-            <TextBlock x:Name="StatusText"
-                       Text="fill   &#x2022;   0 / 0"
-                       Foreground="#BEFFFFFF"
-                       FontFamily="JetBrains Mono, Cascadia Mono, Consolas"
-                       FontSize="13"
-                       HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
-                       IsHitTestVisible="False" />
+        <!-- Bottom bar: keycap hints (built in code) + frosted status pill. -->
+        <Grid VerticalAlignment="Bottom" Margin="24,0,24,16" IsHitTestVisible="False">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <WrapPanel x:Name="HintPanel"
+                       Grid.Column="0"
+                       Orientation="Horizontal"
+                       VerticalAlignment="Bottom"
+                       Margin="0,0,16,0" />
+            <Border x:Name="StatusPill"
+                    Grid.Column="1"
+                    VerticalAlignment="Bottom"
+                    CornerRadius="15"
+                    Padding="14,6,16,6"
+                    Background="#8C16161C"
+                    BorderBrush="#26FFFFFF"
+                    BorderThickness="1">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0,0,9,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusText"
+                               Text="fill   &#x2022;   0 / 0"
+                               Foreground="#E6FFFFFF"
+                               FontFamily="JetBrains Mono, Cascadia Mono, Consolas"
+                               FontSize="13"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- Toast notification. -->

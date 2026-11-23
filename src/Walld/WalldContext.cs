@@ -29,7 +29,11 @@ internal sealed class WalldContext : ApplicationContext
     private readonly ToolStripMenuItem _findDuplicatesItem = new("&Find duplicates...");
     private readonly ToolStripMenuItem _liveWallpaperSetItem = new("&Live wallpaper: set video...");
     private readonly ToolStripMenuItem _liveWallpaperStopItem = new("&Stop live wallpaper");
+    private readonly ToolStripMenuItem _currentMenu = new("C&urrent wallpaper");
+    private readonly ToolStripMenuItem _dailyItem = new("Wallpaper of the &day (Bing)");
     private readonly IntPtr _trayIconHandle; // owned by us, not by the Icon wrapper
+    private readonly DailyWallpaperService _daily;
+    private readonly SynchronizationContext _uiContext;
 
     private AppConfig _config;
     private SettingsForm? _settingsForm;
@@ -73,7 +77,11 @@ internal sealed class WalldContext : ApplicationContext
         _hotkeys = new HotkeyManager(_ipcWindow.Handle, action => _router.ExecuteAction(action));
 
         _trayMenu = BuildTrayMenu();
+        _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _collectionMenu.DropDownOpening += (_, _) => RebuildCollectionMenu();
+        _currentMenu.DropDownOpening += (_, _) => RebuildCurrentMenu();
+        _currentMenu.DropDownItems.Add("(loading)"); // makes the submenu arrow show before first open
+        _dailyItem.Click += (_, _) => ToggleDailyWallpaper();
         _findDuplicatesItem.Click += (_, _) => FindDuplicates();
         _liveWallpaperSetItem.Click += (_, _) => SetLiveWallpaperFromDialog();
         _liveWallpaperStopItem.Click += (_, _) => _router.Execute(IpcCommand.VideoStop);
@@ -90,7 +98,10 @@ internal sealed class WalldContext : ApplicationContext
         SyncAutoStartWithRegistry();
         ApplyHotkeys(showBalloon: true);
         ReconfigureAutoChangeTimer();
+        _daily = new DailyWallpaperService(this);
+        _daily.Reconfigure();
         UpdateTrayState();
+        RestoreLiveWallpaper();
 
         SimpleLogger.Info($"walld ready (data dir: {AppPaths.DataDir})");
         if (pendingCommand is { } pending)
@@ -170,6 +181,9 @@ internal sealed class WalldContext : ApplicationContext
             _config.FitMode = disk.FitMode;
             _config.Favorites = disk.Favorites;
             _config.LastApplied = disk.LastApplied;
+            _config.ExtraFolders = disk.ExtraFolders; // picker drag-and-drop
+            _config.Excluded = disk.Excluded;         // picker X key
+            _config.Collections = disk.Collections;   // picker C key
         }
         catch (Exception ex)
         {
@@ -217,7 +231,7 @@ internal sealed class WalldContext : ApplicationContext
         DateTime now = DateTime.Now;
         DateTime nextInterval = now.AddMinutes(Math.Clamp(_config.AutoChangeIntervalMinutes, 1, 1440));
 
-        if (!string.IsNullOrWhiteSpace(_config.DayFolder) || !string.IsNullOrWhiteSpace(_config.NightFolder))
+        if (_config.IsDayNightActive())
         {
             DateTime nextTransition = ComputeNextDayNightTransition(now, _config);
             if (nextTransition < nextInterval)
@@ -309,7 +323,9 @@ internal sealed class WalldContext : ApplicationContext
             _autoTimer = null;
         }
         catch { }
-        try { StopLiveWallpaper(); } catch { }
+        try { _daily.Dispose(); } catch { }
+        // Keep LiveWallpaperEnabled so the video comes back at the next start.
+        try { StopLiveWallpaper(rememberForNextStart: true); } catch { }
         try { _settingsForm?.Close(); } catch { }
         _settingsForm = null;
         try { _hotkeys.Dispose(); } catch { }
@@ -352,11 +368,13 @@ internal sealed class WalldContext : ApplicationContext
             new ToolStripSeparator(),
             new ToolStripMenuItem("&Next wallpaper", null, (_, _) => _router.Execute(IpcCommand.Next)),
             new ToolStripMenuItem("&Previous wallpaper", null, (_, _) => _router.Execute(IpcCommand.Prev)),
+            _currentMenu,
             _collectionMenu,
             _findDuplicatesItem,
             _liveWallpaperSetItem,
             _liveWallpaperStopItem,
             _autoChangeItem,
+            _dailyItem,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Se&ttings...", null, (_, _) => ShowSettings()),
             _autoStartItem,
@@ -481,8 +499,12 @@ internal sealed class WalldContext : ApplicationContext
         }
     }
 
-    /// <summary>Stops the running wallvideo process so the static wallpaper becomes visible again.</summary>
-    public void StopLiveWallpaper()
+    /// <summary>
+    /// Stops the running wallvideo process so the static wallpaper becomes visible again.
+    /// <paramref name="rememberForNextStart"/> is used at shutdown: the video stops
+    /// now but comes back the next time the daemon starts.
+    /// </summary>
+    public void StopLiveWallpaper(bool rememberForNextStart = false)
     {
         try
         {
@@ -495,9 +517,153 @@ internal sealed class WalldContext : ApplicationContext
         }
         catch { }
 
-        _config.LiveWallpaperEnabled = false;
+        if (!rememberForNextStart && _config.LiveWallpaperEnabled)
+        {
+            _config.LiveWallpaperEnabled = false;
+            _configStore.Save(_config);
+        }
+
+        SimpleLogger.Info(rememberForNextStart ? "live wallpaper: paused until next start" : "live wallpaper: stopped");
+    }
+
+    /// <summary>Brings back the video wallpaper that was playing when the daemon last stopped.</summary>
+    private void RestoreLiveWallpaper()
+    {
+        if (!_config.LiveWallpaperEnabled)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_config.LiveWallpaperPath) || !File.Exists(_config.LiveWallpaperPath))
+        {
+            SimpleLogger.Warn($"live wallpaper: cannot restore, file missing '{_config.LiveWallpaperPath}'");
+            _config.LiveWallpaperEnabled = false;
+            _configStore.Save(_config);
+            return;
+        }
+
+        SimpleLogger.Info("live wallpaper: restoring from last session");
+        SetLiveWallpaper(_config.LiveWallpaperPath);
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the daemon's UI thread (safe from any thread).</summary>
+    public void RunOnUiThread(Action action)
+        => _uiContext.Post(_ =>
+        {
+            if (!_shutdownStarted)
+            {
+                action();
+            }
+        }, null);
+
+    /// <summary>Applies a downloaded wallpaper of the day on every screen (called by <see cref="DailyWallpaperService"/>).</summary>
+    public void ApplyDailyWallpaper(string path, string startDate, string title, string copyright)
+    {
+        if (!_engine.ApplyPath(path))
+        {
+            return;
+        }
+
+        _config.DailyWallpaperLastDate = startDate;
         _configStore.Save(_config);
-        SimpleLogger.Info("live wallpaper: stopped");
+        Balloon(string.IsNullOrWhiteSpace(copyright) ? title : $"{title}\n{copyright}", ToolTipIcon.Info, "Wallpaper of the day");
+    }
+
+    private void ToggleDailyWallpaper()
+    {
+        _config.DailyWallpaperEnabled = !_config.DailyWallpaperEnabled;
+        _configStore.Save(_config);
+        _daily.Reconfigure();
+        UpdateTrayState();
+        SimpleLogger.Info($"wallpaper of the day {(_config.DailyWallpaperEnabled ? "enabled" : "disabled")}");
+    }
+
+    /// <summary>Fills the "Current wallpaper" submenu for whatever is on screen right now.</summary>
+    private void RebuildCurrentMenu()
+    {
+        _currentMenu.DropDownItems.Clear();
+        SyncPickerSettings();
+
+        string? path = _engine.CurrentPath();
+        if (path is null)
+        {
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem("No wallpaper applied yet") { Enabled = false });
+        }
+        else
+        {
+            bool builtIn = WallpaperSources.IsBuiltIn(path);
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem(
+                Path.GetFileName(path).Replace("&", "&&") + (builtIn ? "  (built-in)" : ""))
+            {
+                Enabled = false,
+                ToolTipText = path,
+            });
+            _currentMenu.DropDownItems.Add(new ToolStripSeparator());
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem("&Favorite", null, (_, _) => ToggleFavorite(path))
+            {
+                Checked = _config.IsFavorite(path),
+            });
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem("Show in &Explorer", null, (_, _) => ShowInExplorer(path)));
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem("&Never show again", null, (_, _) => NeverShowAgain(path)));
+        }
+
+        int hidden = _config.Excluded?.Count ?? 0;
+        if (hidden > 0)
+        {
+            _currentMenu.DropDownItems.Add(new ToolStripSeparator());
+            _currentMenu.DropDownItems.Add(new ToolStripMenuItem(
+                $"&Restore hidden wallpapers ({hidden})", null, (_, _) => ClearExcluded()));
+        }
+    }
+
+    private void ToggleFavorite(string path)
+    {
+        SyncPickerSettings();
+        var favorites = new HashSet<string>(_config.Favorites ?? [], StringComparer.OrdinalIgnoreCase);
+        bool added = favorites.Add(path);
+        if (!added)
+        {
+            favorites.Remove(path);
+        }
+
+        _config.Favorites = favorites.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
+        _configStore.Save(_config);
+        SimpleLogger.Info($"{(added ? "added to" : "removed from")} favorites: '{path}'");
+    }
+
+    private void NeverShowAgain(string path)
+    {
+        SyncPickerSettings();
+        if (!_config.IsExcluded(path))
+        {
+            _config.Excluded.Add(path);
+            _configStore.Save(_config);
+        }
+
+        SimpleLogger.Info($"never show again: '{path}'");
+        _engine.Next(); // replace it right away
+    }
+
+    private void ClearExcluded()
+    {
+        SyncPickerSettings();
+        int count = _config.Excluded.Count;
+        _config.Excluded.Clear();
+        _configStore.Save(_config);
+        SimpleLogger.Info($"restored {count} hidden wallpaper(s)");
+        Balloon($"{count} hidden wallpaper(s) are back in rotation.", ToolTipIcon.Info);
+    }
+
+    private static void ShowInExplorer(string path)
+    {
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Error("failed to show the wallpaper in Explorer", ex);
+        }
     }
 
     private void ShowSettings()
@@ -517,8 +683,24 @@ internal sealed class WalldContext : ApplicationContext
     /// <summary>Saves the edited config, syncs autostart and re-registers hotkeys live.</summary>
     private IReadOnlyList<HotkeyRegistrationFailure> ApplySettings(AppConfig config)
     {
+        // Values that may have changed while the dialog was open, and that the
+        // dialog does not edit, come from their owners instead of the stale draft.
+        AppConfig disk = _configStore.Load();
+        disk.EnsureDefaults();
+        config.Favorites = disk.Favorites;
+        config.LastApplied = disk.LastApplied;
+        config.Collections = disk.Collections;
+        config.DailyWallpaperLastDate = _config.DailyWallpaperLastDate;
+        config.LiveWallpaperEnabled = _config.LiveWallpaperEnabled;
+        config.LiveWallpaperPath = _config.LiveWallpaperPath;
+
+        bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
         config.EnsureDefaults();
         _config = config;
+        if (dailyChanged)
+        {
+            _daily.Reconfigure();
+        }
         _configStore.Save(_config); // atomic save
         try
         {
@@ -603,6 +785,7 @@ internal sealed class WalldContext : ApplicationContext
     {
         _autoChangeItem.Checked = _config.AutoChangeEnabled;
         _autoStartItem.Checked = _config.StartWithWindows;
+        _dailyItem.Checked = _config.DailyWallpaperEnabled;
     }
 
     private static Process? FindRunningPicker()
@@ -620,6 +803,6 @@ internal sealed class WalldContext : ApplicationContext
         return null;
     }
 
-    private void Balloon(string text, ToolTipIcon icon = ToolTipIcon.Warning)
-        => _notifyIcon.ShowBalloonTip(4000, "WallpaperSuite", text, icon);
+    private void Balloon(string text, ToolTipIcon icon = ToolTipIcon.Warning, string title = "WallpaperSuite")
+        => _notifyIcon.ShowBalloonTip(4000, title, text, icon);
 }
