@@ -33,7 +33,6 @@ internal sealed class DailyWallpaperService : IDisposable
     public DailyWallpaperService(WalldContext owner)
     {
         _owner = owner;
-        SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
     /// <summary>Starts or stops the service to match <see cref="AppConfig.DailyWallpaperEnabled"/>.</summary>
@@ -45,6 +44,8 @@ internal sealed class DailyWallpaperService : IDisposable
             return;
         }
 
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+
         if (!_owner.Config.DailyWallpaperEnabled)
         {
             _http?.Dispose();
@@ -52,6 +53,7 @@ internal sealed class DailyWallpaperService : IDisposable
             return;
         }
 
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
         Schedule(FirstCheckDelay);
     }
 

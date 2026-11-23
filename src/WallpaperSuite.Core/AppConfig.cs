@@ -109,6 +109,15 @@ public sealed class AppConfig
     /// <summary>Bing start date (yyyyMMdd) of the last wallpaper of the day that was applied.</summary>
     public string DailyWallpaperLastDate { get; set; } = "";
 
+    /// <summary>When true, automatically check for updates at most once per 24 hours.</summary>
+    public bool AutoCheckUpdates { get; set; }
+
+    /// <summary>UTC time of the last update check.</summary>
+    public DateTime LastUpdateCheck { get; set; }
+
+    /// <summary>Version the user asked to skip; not offered again until a newer release appears.</summary>
+    public string SkippedVersion { get; set; } = "";
+
     /// <summary>Full paths the user chose "Never show again" for; Next/auto-change skip them.</summary>
     public List<string> Excluded { get; set; } = [];
 
@@ -209,6 +218,15 @@ foreach (var (action, spec) in DefaultHotkeys())
             ConfigVersion = 7;
         }
 
+        // Phase 8: update check settings.
+        if (ConfigVersion < 8)
+        {
+            AutoCheckUpdates = false;
+            LastUpdateCheck = default;
+            SkippedVersion ??= "";
+            ConfigVersion = 8;
+        }
+
         if (MonitorMode is not (MonitorModeSame or MonitorModePerMonitor))
         {
             MonitorMode = MonitorModeSame;
@@ -287,6 +305,9 @@ if (AutoChangeIntervalMinutes < 1)
         ThemeFollowsWallpaper = ThemeFollowsWallpaper,
         DailyWallpaperEnabled = DailyWallpaperEnabled,
         DailyWallpaperLastDate = DailyWallpaperLastDate,
+        AutoCheckUpdates = AutoCheckUpdates,
+        LastUpdateCheck = LastUpdateCheck,
+        SkippedVersion = SkippedVersion,
         Excluded = [.. Excluded ?? []],
         ConfigVersion = ConfigVersion,
     };

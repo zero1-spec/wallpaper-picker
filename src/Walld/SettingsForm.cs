@@ -22,6 +22,7 @@ internal sealed class SettingsForm : Form
 
     private readonly AppConfig _draft;
     private readonly Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> _apply;
+    private readonly UpdateService _update;
 
     // Hotkeys
     private readonly HotkeyBox _openPickerBox = new();
@@ -37,6 +38,9 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _pauseOnFullscreen = new() { Text = "Pause auto-change while a fullscreen app or game runs", AutoSize = true };
     private readonly CheckBox _pauseOnBatterySaver = new() { Text = "Pause auto-change while battery saver is on", AutoSize = true };
     private readonly CheckBox _dailyWallpaper = new() { Text = "Wallpaper of the day from Bing", AutoSize = true };
+    private readonly CheckBox _autoCheckUpdates = new() { Text = "Check for updates automatically", AutoSize = true };
+    private readonly Button _checkNowButton = new() { Text = "Check now", AutoSize = true };
+    private readonly Label _versionLabel = new() { AutoSize = true };
 
     // Folders
     private readonly TextBox _rootFolderBox = new() { Dock = DockStyle.Fill };
@@ -61,10 +65,11 @@ internal sealed class SettingsForm : Form
     private readonly Button _saveButton = new() { Text = "Save", AutoSize = true };
     private readonly Button _cancelButton = new() { Text = "Cancel", AutoSize = true };
 
-    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply)
+    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update)
     {
         _draft = current.Clone(); // edits apply to a copy so Cancel discards them
         _apply = apply;
+        _update = update;
 
         Text = "WallpaperSuite Settings";
         Font = SystemFonts.MessageBoxFont;
@@ -146,9 +151,14 @@ internal sealed class SettingsForm : Form
             _pauseOnBatterySaver,
             Spacer(),
             _dailyWallpaper,
-            Hint("Downloads one photo a day from bing.com and applies it. This is the only feature that uses the internet. Photos are saved in the data folder and also appear in the picker."));
+            Hint("Downloads one photo a day from bing.com and applies it. This is one of two optional network features; the other is the update check."),
+            Spacer(),
+            _autoCheckUpdates,
+            Row(_checkNowButton, _versionLabel),
+            Hint("Checks GitHub for a new release at most once per 24 hours. Only the app version is sent; nothing about your machine."));
 
         _autoChangeEnabled.CheckedChanged += (_, _) => UpdateEnabledState();
+        _checkNowButton.Click += (_, _) => _update.CheckForUpdatesNow();
         return Page("General", page);
     }
 
@@ -428,6 +438,9 @@ internal sealed class SettingsForm : Form
         _pauseOnFullscreen.Checked = _draft.PauseOnFullscreen;
         _pauseOnBatterySaver.Checked = _draft.PauseOnBatterySaver;
         _dailyWallpaper.Checked = _draft.DailyWallpaperEnabled;
+        _autoCheckUpdates.Checked = _draft.AutoCheckUpdates;
+        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName()?.Version;
+        _versionLabel.Text = version is not null ? $"Version {version.Major}.{version.Minor}.{version.Build}" : "Version unknown";
 
         _rootFolderBox.Text = _draft.RootFolder;
         int builtInCount = WallpaperSources.CountBuiltIn();
@@ -494,6 +507,7 @@ internal sealed class SettingsForm : Form
         _draft.PauseOnFullscreen = _pauseOnFullscreen.Checked;
         _draft.PauseOnBatterySaver = _pauseOnBatterySaver.Checked;
         _draft.DailyWallpaperEnabled = _dailyWallpaper.Checked;
+        _draft.AutoCheckUpdates = _autoCheckUpdates.Checked;
 
         _draft.RootFolder = root;
         _draft.IncludeBuiltInWallpapers = _includeBuiltIn.Checked;

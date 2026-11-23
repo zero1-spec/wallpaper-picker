@@ -13,7 +13,7 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 <img src="https://img.shields.io/badge/Version-0.5.0-green?style=for-the-badge" alt="Version 0.5.0">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
-<img src="https://img.shields.io/badge/Offline-By%20default%20(Bing%20optional)-green?style=for-the-badge" alt="Offline by default; Bing optional">
+<img src="https://img.shields.io/badge/Offline-By%20default%20(two%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; two optional network features">
 </p>
 
 <p>
@@ -55,7 +55,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 ## Why WallpaperSuite?
 
 - **Light.** The daemon idles at ~13 MB private memory and 0% CPU — no polling, timers run only when needed.
-- **Offline by default.** No network ports, no local server, no accounts. The only network feature is the optional *Wallpaper of the day* (Bing), off by default — nothing is downloaded unless you turn it on.
+- **Offline by default.** No network ports, no local server, no accounts. The only optional network features are *Wallpaper of the day* (Bing) and the update check — both off by default; nothing is downloaded unless you turn them on.
 - **No admin.** Installs per-user to `%LOCALAPPDATA%\Programs\WallpaperSuite`. Uninstall keeps your data.
 - **Hotkey-first.** Global hotkeys for open, next, previous, pause — editable in Settings.
 - **Picker on demand.** The WPF picker closes after you apply or press Esc; it does not stay resident.
@@ -84,12 +84,27 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 
 ## Privacy
 
-WallpaperSuite is offline by default. The only thing it ever requests from the network is the optional Bing wallpaper of the day, and only while **Wallpaper of the day** is on (off by default):
+WallpaperSuite is offline by default. Exactly two optional network features exist — *Wallpaper of the day* (Bing) and the update check — and both are off by default. Each is described in its own subsection below.
+
+### Wallpaper of the day
 
 - **What is requested:** Bing's daily image metadata (`www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=<your Windows display language>`), then, only when a new image exists, the image file itself (`www.bing.com<urlbase>_UHD.jpg` or `_1920x1080.jpg`).
 - **Headers:** `User-Agent: WallpaperSuite/0.5` only — no other custom headers.
 - **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameter is the system locale (`mkt`), used to pick your Bing market.
 - **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
+
+### Update check
+
+When **Check for updates automatically** is on (off by default), or when you click **Check now** in Settings or **Check for updates…** in the tray menu, WallpaperSuite makes a single request to the GitHub API:
+
+- **What is requested:** `https://api.github.com/repos/zero1-spec/wallpaper-picker/releases/latest` — the latest release metadata (tag name, release notes, asset download URLs).
+- **Headers:** `User-Agent: WallpaperSuite/<version>` only — no other custom headers, no user or machine data.
+- **What is downloaded (only if you choose "Update now"):** the installer `WallpaperSetup-<version>.exe` from that release, plus its `.sha256` checksum, both from `github.com` over HTTPS only. The SHA-256 is verified before the installer is run; on mismatch the download is deleted and nothing is executed.
+- **Checksum limitation:** the `.sha256` file comes from the same GitHub release, so it protects against corrupted downloads but not against a compromised release. Code signing is planned — see Roadmap.
+- **Frequency:** at most once per 24 hours, one-shot timer shortly after start. Ignored entirely while auto-check is off.
+- **Not sent:** no file names, paths, machine name, username, or telemetry.
+
+If a newer version is found, a tray balloon and a dialog offer **Update now**, **Later**, or **Skip this version**. The skipped version is remembered until a newer release appears.
 
 Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kept; favorites never deleted) and appear in the picker like any other wallpaper.
 
@@ -304,6 +319,15 @@ WallpaperSuite/
 - [x] Theme follows wallpaper brightness
 - [ ] Video / live wallpaper beyond the proof of concept
 - [ ] Code signing for the installer
+
+## Releasing
+
+Maintainers: attach both files below to every GitHub release, built with `build\release.ps1`:
+
+- `installer\Output\WallpaperSetup-<version>.exe`
+- `installer\Output\WallpaperSetup-<version>.exe.sha256` (just the hex SHA-256 hash)
+
+The `.sha256` file is required by the in-app update check: without it, or on hash mismatch, the downloaded installer is deleted and never run.
 
 ## Contributing
 

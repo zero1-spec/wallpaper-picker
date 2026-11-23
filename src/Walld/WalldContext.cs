@@ -33,6 +33,7 @@ internal sealed class WalldContext : ApplicationContext
     private readonly ToolStripMenuItem _dailyItem = new("Wallpaper of the &day (Bing)");
     private readonly IntPtr _trayIconHandle; // owned by us, not by the Icon wrapper
     private readonly DailyWallpaperService _daily;
+    private readonly UpdateService _update;
     private readonly SynchronizationContext _uiContext;
 
     private AppConfig _config;
@@ -100,6 +101,8 @@ internal sealed class WalldContext : ApplicationContext
         ReconfigureAutoChangeTimer();
         _daily = new DailyWallpaperService(this);
         _daily.Reconfigure();
+        _update = new UpdateService(this);
+        _update.Reconfigure();
         UpdateTrayState();
         RestoreLiveWallpaper();
 
@@ -324,6 +327,7 @@ internal sealed class WalldContext : ApplicationContext
         }
         catch { }
         try { _daily.Dispose(); } catch { }
+        try { _update.Dispose(); } catch { }
         // Keep LiveWallpaperEnabled so the video comes back at the next start.
         try { StopLiveWallpaper(rememberForNextStart: true); } catch { }
         try { _settingsForm?.Close(); } catch { }
@@ -375,6 +379,7 @@ internal sealed class WalldContext : ApplicationContext
             _liveWallpaperStopItem,
             _autoChangeItem,
             _dailyItem,
+            new ToolStripMenuItem("Check for &updates...", null, (_, _) => _update.CheckForUpdatesNow()),
             new ToolStripSeparator(),
             new ToolStripMenuItem("Se&ttings...", null, (_, _) => ShowSettings()),
             _autoStartItem,
@@ -675,7 +680,7 @@ internal sealed class WalldContext : ApplicationContext
         }
 
         // Created on demand, disposed on close — no form kept in RAM while hidden.
-        _settingsForm = new SettingsForm(_config, ApplySettings);
+        _settingsForm = new SettingsForm(_config, ApplySettings, _update);
         _settingsForm.FormClosed += (_, _) => _settingsForm = null;
         _settingsForm.Show();
     }
@@ -694,13 +699,18 @@ internal sealed class WalldContext : ApplicationContext
         config.LiveWallpaperEnabled = _config.LiveWallpaperEnabled;
         config.LiveWallpaperPath = _config.LiveWallpaperPath;
 
-        bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
-        config.EnsureDefaults();
-        _config = config;
-        if (dailyChanged)
-        {
-            _daily.Reconfigure();
-        }
+    bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
+    bool autoCheckChanged = config.AutoCheckUpdates != _config.AutoCheckUpdates;
+    config.EnsureDefaults();
+    _config = config;
+    if (dailyChanged)
+    {
+        _daily.Reconfigure();
+    }
+    if (autoCheckChanged)
+    {
+        _update.Reconfigure();
+    }
         _configStore.Save(_config); // atomic save
         try
         {
@@ -803,6 +813,6 @@ internal sealed class WalldContext : ApplicationContext
         return null;
     }
 
-    private void Balloon(string text, ToolTipIcon icon = ToolTipIcon.Warning, string title = "WallpaperSuite")
+    internal void Balloon(string text, ToolTipIcon icon = ToolTipIcon.Warning, string title = "WallpaperSuite")
         => _notifyIcon.ShowBalloonTip(4000, title, text, icon);
 }

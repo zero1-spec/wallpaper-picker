@@ -244,3 +244,18 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net8.0-win
 
 ## Docs (this session)
 - README.md: honesty pass — Offline badge now reads "Offline by default (Bing optional)"; "Why WallpaperSuite" bullet states the only network feature is opt-in Bing wallpaper of the day, off by default; new Privacy section documents exactly what `DailyWallpaperService` sends to Bing (`www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=<system locale>`, then `www.bing.com<urlbase>_UHD.jpg`/`_1920x1080.jpg`, `User-Agent: WallpaperSuite/0.5` only) and that nothing else is sent (no file names, paths, machine name, username, telemetry). Confirmed `SystemEvents.PowerModeChanged` is subscribed in the ctor even while the option is off (handler gated on `DailyWallpaperEnabled`; not fixed per instructions). Verified 16 built-in wallpapers (not 17) ship by default via `Walld.csproj` line 79; all 16 have source + license in `assets/wallpapers/CREDITS.md`; none are unclear.
+
+## Phase 8 checklist (in-app update check and one-click update)
+- [x] Core: AppConfig AutoCheckUpdates + LastUpdateCheck + SkippedVersion + ConfigVersion 8 + Clone()
+- [x] Walld: DailyWallpaperService subscribes SystemEvents.PowerModeChanged only while DailyWallpaperEnabled is on, unsubscribes when off or on dispose
+- [x] Walld: new UpdateService (GitHub API check, hash-verified download, installer launch)
+- [x] Walld: wire UpdateService into WalldContext (tray menu item, auto-check timer, dispose on shutdown)
+- [x] Walld: SettingsForm update UI (checkbox, Check now button, current version text)
+- [x] build: release.ps1 helper (build installer + sha256)
+- [x] Docs: README Offline badge/Privacy/Releasing note updated for two optional network features
+- [x] dotnet build = 0 errors / 0 warnings
+- [x] Batch 1 follow-up: README Privacy intro reworded to name exactly two optional network features; UpdateService redirect handling fixed — auto-redirect disabled, each redirect hop validated as HTTPS to github.com / *.githubusercontent.com only; GitHub asset redirects (release-assets.githubusercontent.com, objects.githubusercontent.com) now allowed; hash check still applies after download
+- [x] Batch 2: build/release.ps1 already delegates ISCC lookup to build-installer.ps1 (no duplication, no fixed path) — no change needed
+- [x] Batch 3: README Privacy — added checksum limitation sentence (.sha256 from same release, protects against corruption not compromise; code signing planned)
+- [x] Final verify: `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings; `release.ps1` parses OK; redirect + SHA-256 handling verified in UpdateService.cs
+- [x] dotnet build = 0 errors / 0 warnings (final)
