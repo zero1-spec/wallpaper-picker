@@ -2,7 +2,7 @@
 ; Build: iscc installer\WallpaperSetup.iss
 
 #define MyAppName "WallpaperSuite"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.5.0"
 #define MyAppPublisher "WallpaperSuite"
 #define MyAppExeName "walld.exe"
 
@@ -23,8 +23,8 @@ OutputBaseFilename=WallpaperSetup-{#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\icon.ico
 AllowNoIcons=yes
-ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -42,38 +42,50 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "WallpaperSuite"; ValueData: """{app}\{#MyAppExeName}"" --background"; Tasks: autostart; Flags: uninsdeletevalue preservestringtype
 
-[Code]
-var
-  QuitResult: Integer;
+[Run]
+; Start the tray daemon when setup finishes. A [Run] entry expands {app} itself
+; (the old [Code] Exec call passed the literal text "{app}" and never launched).
+; Not skipped in silent mode, so /VERYSILENT installs also start the daemon.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--background"; WorkingDir: "{app}"; Description: "Start {#MyAppName} now"; Flags: nowait postinstall runasoriginaluser
 
-procedure CurStepChanged(CurStep: TSetupStep);
+[Code]
+// Constants such as {app} are NOT expanded inside string literals in [Code];
+// they must go through ExpandConstant(). Exec() also runs the program directly
+// (no shell), so shell syntax like "2>nul" must never be passed as arguments.
+procedure StopRunningApp();
 var
   ResultCode: Integer;
+  AppDir, Daemon, TaskKill: String;
 begin
-  if CurStep = ssInstall then
+  AppDir := ExpandConstant('{app}');
+  Daemon := AddBackslash(AppDir) + '{#MyAppExeName}';
+  TaskKill := ExpandConstant('{sys}\taskkill.exe');
+
+  // Ask a running daemon to quit cleanly first so its tray icon is removed.
+  // "walld.exe quit" only forwards the request, so give the daemon a moment to exit.
+  if FileExists(Daemon) then
   begin
-    // On upgrade: quit any running daemon before installing over it.
-    Exec('"{app}\{#MyAppExeName}"', 'quit', '', SW_HIDE, ewWaitUntilTerminated, QuitResult);
+    Exec(Daemon, 'quit', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(1500);
   end;
 
-  if CurStep = ssPostInstall then
-  begin
-    // Launch walld.exe --background after install.
-    Exec('"{app}\{#MyAppExeName}"', '--background', '{app}', SW_SHOW, ewNoWait, ResultCode);
-  end;
+  // Force-close anything still holding files open (no-op when nothing is running).
+  Exec(TaskKill, '/f /im {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(TaskKill, '/f /im wallpicker.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(TaskKill, '/f /im wallvideo.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-function UninstallInitialize(): Boolean;
-var
-  ResultCode: Integer;
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  // Quit running daemon before uninstall.
-  Exec('"{app}\{#MyAppExeName}"', 'quit', '', SW_HIDE, ewWaitUntilTerminated, QuitResult);
+  // Upgrade: stop the running copy before its files are replaced.
+  if CurStep = ssInstall then
+    StopRunningApp();
+end;
 
-  // Close wallpicker.exe if running.
-  Exec('taskkill', '/f /im wallpicker.exe 2>nul', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-
-  // Always keep %APPDATA%\WallpaperPicker (config, logs, thumbnails) by default.
-
-  Result := True;
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  // Runs after the user confirmed the uninstall (UninstallInitialize ran before the prompt).
+  // %APPDATA%\WallpaperPicker (config, logs, thumbnails) is always kept.
+  if CurUninstallStep = usUninstall then
+    StopRunningApp();
 end;

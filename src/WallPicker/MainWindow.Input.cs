@@ -49,6 +49,14 @@ public partial class MainWindow
             }
         }
 
+        // Ctrl+Delete: send the centered wallpaper to the Recycle Bin (asks first).
+        if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            RecycleCurrent();
+            e.Handled = true;
+            return;
+        }
+
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
         {
             return;
@@ -106,7 +114,13 @@ public partial class MainWindow
                 break;
 
             case Key.Enter:
-                ApplyCurrent();
+                // Shift+Enter: in per-monitor mode, set it on every screen.
+                ApplyCurrent(allScreens: (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+                e.Handled = true;
+                break;
+
+            case Key.X:
+                ToggleExcluded();
                 e.Handled = true;
                 break;
 

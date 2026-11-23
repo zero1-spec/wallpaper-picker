@@ -35,6 +35,12 @@ public static class AppPaths
 
     public static string ExportDir => Path.Combine(DataDir, "export");
 
+    /// <summary>Downloaded wallpapers of the day (opt-in feature).</summary>
+    public static string DailyDir => Path.Combine(DataDir, "daily");
+
+    /// <summary>Wallpapers shipped with the app, installed next to the binaries.</summary>
+    public static string BuiltInWallpapersDir => Path.Combine(InstallDir, "wallpapers");
+
     /// <summary>Directory of the currently running exe/dll. Never hardcoded.</summary>
     public static string InstallDir => AppContext.BaseDirectory;
 

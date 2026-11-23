@@ -56,6 +56,26 @@ public static class WallpaperLibrary
 
     private static readonly DateTime UnixEpochUtc = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>Scans several folders, dropping duplicate paths; sorted by lower-case file name.</summary>
+    public static List<WallpaperFile> Scan(IEnumerable<string> folders)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var items = new List<WallpaperFile>();
+        foreach (string folder in folders)
+        {
+            foreach (WallpaperFile file in Scan(folder))
+            {
+                if (seen.Add(file.Path))
+                {
+                    items.Add(file);
+                }
+            }
+        }
+
+        items.Sort((a, b) => string.CompareOrdinal(a.LowerName, b.LowerName));
+        return items;
+    }
+
     /// <summary>Returns every supported image under <paramref name="rootFolder"/>; empty on any failure.</summary>
     public static List<WallpaperFile> Scan(string? rootFolder)
     {

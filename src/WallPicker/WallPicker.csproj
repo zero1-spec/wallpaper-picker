@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
-    <Version>0.1.0</Version>
+    <Version>0.5.0</Version>
     <!-- Same low-memory runtime settings as the daemon.
          InvariantGlobalization must stay off: WPF's font/text stack needs real culture data. -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
@@ -27,6 +27,11 @@
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <!-- Built-in wallpapers (assets/wallpapers) ship next to the binaries in wallpapers\. -->
+  <ItemGroup>
+    <None Include="..\..\assets\wallpapers\**\*" Link="wallpapers\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -86,6 +87,14 @@ public partial class App : System.Windows.Application
         if (!string.IsNullOrWhiteSpace(config.RootFolder) && Directory.Exists(config.RootFolder))
         {
             return config.RootFolder;
+        }
+
+        // No main folder yet: open straight onto the built-in wallpapers (and any
+        // other library folders) instead of asking. "O" still picks a folder.
+        List<string> library = WallpaperSources.GetLibraryFolders(config);
+        if (library.Count > 0)
+        {
+            return library[0];
         }
 
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
