@@ -13,7 +13,7 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 <img src="https://img.shields.io/badge/Version-0.5.0-green?style=for-the-badge" alt="Version 0.5.0">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
-<img src="https://img.shields.io/badge/Offline-By%20default-green?style=for-the-badge" alt="Offline by default">
+<img src="https://img.shields.io/badge/Offline-By%20default%20(Bing%20optional)-green?style=for-the-badge" alt="Offline by default; Bing optional">
 </p>
 
 <p>
@@ -55,7 +55,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 ## Why WallpaperSuite?
 
 - **Light.** The daemon idles at ~13 MB private memory and 0% CPU — no polling, timers run only when needed.
-- **Offline by default.** No network ports, no local server, no accounts. The only feature that touches the internet is the opt-in *Wallpaper of the day*.
+- **Offline by default.** No network ports, no local server, no accounts. The only network feature is the optional *Wallpaper of the day* (Bing), off by default — nothing is downloaded unless you turn it on.
 - **No admin.** Installs per-user to `%LOCALAPPDATA%\Programs\WallpaperSuite`. Uninstall keeps your data.
 - **Hotkey-first.** Global hotkeys for open, next, previous, pause — editable in Settings.
 - **Picker on demand.** The WPF picker closes after you apply or press Esc; it does not stay resident.
@@ -81,6 +81,17 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 | 🔍 **Duplicate finder** | Tray menu finds duplicates by size + SHA-256, sends to Recycle Bin with confirmation, removes missing entries |
 | ⌨️ **Hotkeys** | Global hotkeys for open / next / previous / pause, editable in Settings |
 | 💻 **CLI** | `walld.exe open\|next\|prev\|random\|pause\|resume\|toggle-pause\|set <path>\|quit` |
+
+## Privacy
+
+WallpaperSuite is offline by default. The only thing it ever requests from the network is the optional Bing wallpaper of the day, and only while **Wallpaper of the day** is on (off by default):
+
+- **What is requested:** Bing's daily image metadata (`www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=<your Windows display language>`), then, only when a new image exists, the image file itself (`www.bing.com<urlbase>_UHD.jpg` or `_1920x1080.jpg`).
+- **Headers:** `User-Agent: WallpaperSuite/0.5` only — no other custom headers.
+- **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameter is the system locale (`mkt`), used to pick your Bing market.
+- **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
+
+Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kept; favorites never deleted) and appear in the picker like any other wallpaper.
 
 ## Install
 
