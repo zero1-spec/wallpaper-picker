@@ -484,6 +484,8 @@ The `.sha256` file is required by the in-app update check: without it, or on has
 
 Fork, create a branch, make your change, and ensure `dotnet build WallpaperSuite.sln` has **0 errors / 0 warnings**. Keep the daemon RAM low and idle CPU at 0% — no polling. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+"Built with AI-assisted development, with a focus on performance, simplicity, and user experience."
+
 ## 📄 License
 
 MIT. See [`LICENSE`](LICENSE).
