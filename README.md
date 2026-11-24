@@ -8,16 +8,16 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 
 <p>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
-<a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue?style=for-the-badge&logo=dotnet" alt=".NET 8"></a>
+<a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10-blue?style=for-the-badge&logo=dotnet" alt=".NET 10"></a>
 <img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.6.0-green?style=for-the-badge" alt="Version 0.5.1">
+<img src="https://img.shields.io/badge/Version-0.7.0-green?style=for-the-badge" alt="Version 0.7.0">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
-<img src="https://img.shields.io/badge/Offline-By%20default%20(two%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; two optional network features">
+<img src="https://img.shields.io/badge/Offline-By%20default%20(four%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; four optional network features">
 </p>
 
 <p>
-<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.6.0-blue?style=for-the-badge" alt="Download v0.6.0"></a>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.7.0-blue?style=for-the-badge" alt="Download v0.7.0"></a>
 </p>
 
 <p>
@@ -55,7 +55,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 ## Why WallpaperSuite?
 
 - **Light.** The daemon idles at ~13 MB private memory and 0% CPU — no polling, timers run only when needed.
-- **Offline by default.** No network ports, no local server, no accounts. The only optional network features are *Wallpaper of the day* (Bing) and the update check — both off by default; nothing is downloaded unless you turn them on.
+- **Offline by default.** No network ports, no local server, no accounts. The only optional network features are *Wallpaper of the day* (Bing), *Weather-based switching* (Open-Meteo), *Wallhaven wallpapers* and the update check — all off by default; nothing is downloaded unless you turn them on.
 - **No admin.** Installs per-user to `%LOCALAPPDATA%\Programs\WallpaperSuite`. Uninstall keeps your data.
 - **Hotkey-first.** Global hotkeys for open, next, previous, pause — editable in Settings.
 - **Picker on demand.** The WPF picker closes after you apply or press Esc; it does not stay resident.
@@ -72,6 +72,8 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 | 🔄 **Auto-change** | Random or sequential mode, interval 1–1440 minutes (default 30), history of last 50, never repeats twice in a row |
 | 🌓 **Day/Night** | Different wallpaper folders by time of day (default night 19:00–07:00), set up in Settings → Folders |
 | 🌅 **Wallpaper of the day** | Optional, opt-in: downloads Bing's photo of the day (4K when available) and applies it once per new photo. Saved in the data folder, so they also show up in the picker |
+| 🌦️ **Weather-based switching** | Optional, opt-in: uses the free Open-Meteo API (no API key) to pick a folder per condition (Clear/Cloudy/Rain/Snow/Storm), optionally combined with day/night. Off by default |
+| 🖼️ **Wallhaven wallpapers** | Optional, opt-in: searches wallhaven.cc's free, no-API-key SFW catalogue (optional keywords, category, sorting) and applies new high-resolution images. Off by default |
 | 🌗 **Theme follows wallpaper** | Optional: switches Windows light / dark mode to match how bright the wallpaper is |
 | ⏸️ **Smart pause** | Skips ticks during fullscreen apps/games or battery saver, logged in `walld.log` |
 | 🎨 **Accent color** | Syncs Windows accent color from the wallpaper's primary palette color (optional, off by default) |
@@ -84,13 +86,33 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 
 ## Privacy
 
-WallpaperSuite is offline by default. Exactly two optional network features exist — *Wallpaper of the day* (Bing) and the update check — and both are off by default. Each is described in its own subsection below.
+WallpaperSuite is offline by default. Exactly four optional network features exist — *Wallpaper of the day* (Bing), *Weather-based switching* (Open-Meteo), *Wallhaven wallpapers* and the update check — and all are off by default. Each is described in its own subsection below.
 
 ### Wallpaper of the day
 
 - **What is requested:** Bing's daily image metadata (`www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=<your Windows display language>`), then, only when a new image exists, the image file itself (`www.bing.com<urlbase>_UHD.jpg` or `_1920x1080.jpg`).
-- **Headers:** `User-Agent: WallpaperSuite/0.5` only — no other custom headers.
+- **Headers:** `User-Agent: WallpaperSuite/0.7.0` only — no other custom headers.
 - **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameter is the system locale (`mkt`), used to pick your Bing market.
+- **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
+
+### Weather-based switching
+
+When **Use weather-based wallpapers** is on in Settings → Weather (off by default), WallpaperSuite asks the free Open-Meteo API for the current condition at your location and picks a folder per condition (Clear / Cloudy / Rain / Snow / Storm), optionally combined with day/night.
+
+- **What is requested:** Open-Meteo's forecast endpoint (`api.open-meteo.com/v1/forecast?latitude=<lat>&longitude=<lon>&current=temperature_2m,weather_code`) using the coordinates you resolved from a city name (city → coordinates via `geocoding-api.open-meteo.com/v1/search?name=<city>`). No API key.
+- **Headers:** `User-Agent: WallpaperSuite/<version>` only — no other custom headers.
+- **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameters are the coordinates of the city you chose.
+- **Data attribution:** weather data © Open-Meteo.com, licensed under CC BY 4.0.
+- **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
+
+### Wallhaven wallpapers
+
+When **Wallhaven wallpapers (opt-in)** is on in Settings → General (off by default), WallpaperSuite searches wallhaven.cc's free, no-API-key SFW catalogue and applies the first new high-resolution image it finds, saving it under the data folder's `wallhaven\` directory.
+
+- **What is requested:** `https://wallhaven.cc/api/v1/search?categories=<cat>&purity=100&sorting=<sorting>&topRange=<range>&atleast=1920x1080&ratios=16x9,16x10,21x9` (plus `&q=<keywords>` when a query is set), then the chosen image file from `w.wallhaven.cc`.
+- **Headers:** `User-Agent: WallpaperSuite/<version>` only — no other custom headers.
+- **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameters are the search query, category and sorting you chose.
+- **Filtering:** only SFW (`purity=100`) results at least 1920×1080 in 16:9 / 16:10 / 21:9 are requested; downloads must come from `w.wallhaven.cc` over HTTPS, are validated as JPEG/PNG and capped at 25 MB, and the newest 60 are kept (favorites are never deleted).
 - **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
 
 ### Update check
@@ -106,13 +128,11 @@ When **Check for updates automatically** is on (off by default), or when you cli
 
 If a newer version is found, a tray balloon and a dialog offer **Update now**, **Later**, or **Skip this version**. The skipped version is remembered until a newer release appears.
 
-Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kept; favorites never deleted) and appear in the picker like any other wallpaper.
-
 ## Install
 
-1. Download `WallpaperSetup-0.6.0.exe` from Releases.
+1. Download `WallpaperSetup-0.7.0.exe` from Releases.
 2. Run it. The installer is per-user (`%LOCALAPPDATA%\Programs\WallpaperSuite`) — **no administrator rights needed**. "Start with Windows" is checked by default.
-3. The publish is self-contained (`.NET 8 runtime bundled`), so you do **not** need to install .NET separately.
+3. The publish is self-contained (`.NET 10 runtime bundled`), so you do **not** need to install .NET separately.
 4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
 
 > [!WARNING]
@@ -167,9 +187,9 @@ Open the picker with the tray menu or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W
 
 ### Tray menu
 
-Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Find duplicates…**, **Live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
+Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Find duplicates…**, **Live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Wallhaven wallpapers** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
 
-Settings has four tabs: **General** (startup, auto-change, smart pause, wallpaper of the day), **Folders** (main folder, built-in wallpapers, extra folders, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, accent color, light/dark theme sync) and **Hotkeys**.
+Settings has five tabs: **General** (startup, auto-change, smart pause, wallpaper of the day, Wallhaven wallpapers), **Folders** (main folder, built-in wallpapers, extra folders, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, accent color, light/dark theme sync), **Weather** (weather-based switching via Open-Meteo, mode, city/coordinates, per-condition folders) and **Hotkeys**.
 
 <details>
 <summary>CLI commands walld.exe</summary>
@@ -203,6 +223,7 @@ User data lives in `%APPDATA%\WallpaperPicker`:
 | `export/` | Palette exports (`palette.css`, `palette.json`, `palette.toml`) |
 | `converted/` | Non-native images (e.g. .webp) converted to PNG |
 | `daily/` | Downloaded wallpapers of the day (newest 60 kept; favorites never deleted) |
+| `wallhaven/` | Downloaded Wallhaven wallpapers (newest 60 kept; favorites never deleted) |
 | `logs/walld.log` | Daemon log |
 
 Important `config.json` options:
@@ -217,6 +238,15 @@ Important `config.json` options:
 | `MonitorMode` | `same` (one wallpaper everywhere) or `per-monitor` |
 | `ThemeFollowsWallpaper` | Switch Windows light/dark mode by wallpaper brightness (default off) |
 | `DailyWallpaperEnabled` | Bing wallpaper of the day (default off; uses the internet) |
+| `WeatherEnabled` | Weather-based switching via Open-Meteo (default off; uses the internet) |
+| `WallhavenEnabled` | Wallhaven wallpaper source (default off; uses the internet) |
+| `WallhavenQuery` | Optional search keywords (e.g. `nature`, `space`); empty = no query filter |
+| `WallhavenCategory` | Category: `all`, `general`, `anime` or `general+anime` (default `general`) |
+| `WallhavenSorting` | Sorting: `toplist`, `random`, `views`, `favorites` or `date_added` (default `toplist`) |
+| `WallhavenTopRange` | Top range for toplist: `1d`, `3d`, `1w` or `1M` (default `1w`) |
+| `WeatherMode` | `weather-only` or `weather-and-time` (default `weather-only`) |
+| `WeatherCity` / `WeatherLatitude` / `WeatherLongitude` | Resolved city name and coordinates used for the weather lookup |
+| `WeatherFolders` | Map of condition (Clear/Cloudy/Rain/Snow/Storm) to folder (empty = fall back to the library) |
 | `Excluded` | Wallpapers hidden with "Never show again" |
 | `ActiveCollection` | Collection name for auto-change filtering (empty = all) |
 | `SyncAccentColor` | Sync Windows accent from wallpaper primary color (default off) |
@@ -266,7 +296,7 @@ To build the installer:
 .\build\build-installer.ps1
 ```
 
-Output: `installer\Output\WallpaperSetup-0.6.0.exe`.
+Output: `installer\Output\WallpaperSetup-0.7.0.exe`.
 
 <details>
 <summary>Architecture / Project structure</summary>
@@ -282,13 +312,14 @@ WallpaperSuite/
 ├── installer/                 # Inno Setup 6 script → installer/Output/
 ├── docs/screenshots/          # Screenshots (picker.png, tray.png)
 ├── assets/                    # Icon (icon.png / icon.ico) and built-in wallpapers (assets/wallpapers + CREDITS.md)
-├── WallpaperSuite.sln         # Classic .NET solution (4 projects)
+├── tests/WallpaperSuite.Tests/ # xUnit unit tests for WallpaperSuite.Core
+├── WallpaperSuite.sln         # Classic .NET solution (5 projects)
 ├── CONTRIBUTING.md
 ├── LICENSE                    # MIT
 └── README.md
 ```
 
-`walld.exe` is a tiny tray daemon (WinForms, no main window) that runs auto-change, handles global hotkeys, and serves IPC via `WM_COPYDATA` (no network ports, no local server). Per-monitor wallpapers use the shell's `IDesktopWallpaper` COM interface. The only outbound network code is the opt-in wallpaper-of-the-day download from `www.bing.com`. `wallpicker.exe` is the WPF UI that opens only when needed and closes after you apply or press Esc. Single instance is enforced by a named mutex (`Local\WallpaperSuite.Walld`).
+`walld.exe` is a tiny tray daemon (WinForms, no main window) that runs auto-change, handles global hotkeys, and serves IPC via `WM_COPYDATA` (no network ports, no local server). Per-monitor wallpapers use the shell's `IDesktopWallpaper` COM interface. The only outbound network code is the opt-in wallpaper-of-the-day download from `www.bing.com`, the opt-in weather lookup against `api.open-meteo.com` (with city geocoding via `geocoding-api.open-meteo.com`), and the opt-in Wallhaven search/image fetch from `wallhaven.cc`. `wallpicker.exe` is the WPF UI that opens only when needed and closes after you apply or press Esc. Single instance is enforced by a named mutex (`Local\WallpaperSuite.Walld`).
 
 </details>
 
@@ -304,6 +335,8 @@ WallpaperSuite/
 | Wallpaper not changing | Check `%APPDATA%\WallpaperPicker\logs\walld.log`. |
 | Reset configuration | Stop the daemon (`walld.exe quit`), then delete `config.json`. |
 | Wallpaper of the day not appearing | It needs internet access to `www.bing.com`; failures are retried every 30 minutes and logged in `walld.log`. |
+| Weather switching not applying | Needs **Use weather-based wallpapers** on, a resolved city (or coordinates), and at least one non-empty condition folder; lookups refresh every 30 minutes and failures are logged in `walld.log`. |
+| Wallhaven wallpaper not appearing | Needs **Wallhaven wallpapers (opt-in)** on; only SFW results ≥ 1920×1080 in 16:9/16:10/21:9 are requested. Use **Fetch now** for immediate feedback. Checks run every 4 hours (30-minute retry on failure) and are logged in `walld.log`. |
 | Per-screen mode does nothing | It needs two or more active screens; with one screen it behaves like "same on every screen". |
 | Platform | Windows 11 (tested). Windows 10 (version 1607+) should work but is not tested yet. |
 
@@ -328,6 +361,10 @@ WallpaperSuite/
 - [x] Multi-monitor support (different wallpaper per screen)
 - [x] Built-in wallpapers
 - [x] Wallpaper of the day (opt-in)
+- [x] Weather-based switching (opt-in)
+- [x] Wallhaven wallpapers (opt-in)
+- [x] Config backup export/import
+- [x] .NET 10 (LTS) + unit tests
 - [x] Theme follows wallpaper brightness
 - [ ] Video / live wallpaper beyond the proof of concept
 - [ ] Code signing for the installer

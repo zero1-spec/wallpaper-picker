@@ -12,6 +12,9 @@ public sealed class AppConfig
     public const string NextModeRandom = "random";
     public const string NextModeSequential = "sequential";
 
+    public const string WeatherModeWeatherOnly = "weather-only";
+    public const string WeatherModeWeatherAndTime = "weather-and-time";
+
     public static readonly string[] AllActions =
     {
         ActionOpenPicker,
@@ -125,6 +128,57 @@ public sealed class AppConfig
     public bool IsDayNightActive()
         => DayNightEnabled && (!string.IsNullOrWhiteSpace(DayFolder) || !string.IsNullOrWhiteSpace(NightFolder));
 
+    /// <summary>Opt-in weather-based wallpaper switching (Open-Meteo). Off by default; no network/timer when off.</summary>
+    public bool WeatherEnabled { get; set; }
+
+    /// <summary>"weather-only" or "weather-and-time".</summary>
+    public string WeatherMode { get; set; } = WeatherModeWeatherOnly;
+
+    /// <summary>City used to resolve coordinates via the Open-Meteo geocoding API.</summary>
+    public string WeatherCity { get; set; } = "";
+
+    /// <summary>Resolved latitude (null until the city is resolved).</summary>
+    public double? WeatherLatitude { get; set; }
+
+    /// <summary>Resolved longitude (null until the city is resolved).</summary>
+    public double? WeatherLongitude { get; set; }
+
+    /// <summary>Per-condition folders: Clear / Cloudy / Rain / Snow / Storm → path (empty = fall back to the library).</summary>
+    public Dictionary<string, string> WeatherFolders { get; set; } = DefaultWeatherFolders();
+
+    public static Dictionary<string, string> DefaultWeatherFolders() => new()
+    {
+        ["Clear"] = "",
+        ["Cloudy"] = "",
+        ["Rain"] = "",
+        ["Snow"] = "",
+        ["Storm"] = "",
+    };
+
+    /// <summary>Opt-in Wallhaven wallpaper source. Off by default; no network/timer when off.</summary>
+    public bool WallhavenEnabled { get; set; }
+
+    /// <summary>Optional search keywords (e.g. "nature", "space", "minimal"); empty = no query filter.</summary>
+    public string WallhavenQuery { get; set; } = "";
+
+    /// <summary>Category selector: "all", "general", "anime" or "general+anime".</summary>
+    public string WallhavenCategory { get; set; } = "general";
+
+    /// <summary>Sorting: "toplist", "random", "views", "favorites" or "date_added".</summary>
+    public string WallhavenSorting { get; set; } = "toplist";
+
+    /// <summary>Top range for toplist sorting: "1d", "3d", "1w" or "1M".</summary>
+    public string WallhavenTopRange { get; set; } = "1w";
+
+    /// <summary>Maps a category selector to Wallhaven's three-digit category code.</summary>
+    public static string WallhavenCategoryCodes(string? category) => category switch
+    {
+        "all" => "111",
+        "anime" => "010",
+        "general+anime" => "110",
+        _ => "100",
+    };
+
     public bool IsExcluded(string? path)
         => !string.IsNullOrWhiteSpace(path)
             && (Excluded ?? []).Contains(path, StringComparer.OrdinalIgnoreCase);
@@ -227,6 +281,27 @@ foreach (var (action, spec) in DefaultHotkeys())
             ConfigVersion = 8;
         }
 
+        // Phase 9: opt-in weather-based switching (Open-Meteo). Off by default.
+        if (ConfigVersion < 9)
+        {
+            WeatherEnabled = false;
+            WeatherMode = WeatherModeWeatherOnly;
+            WeatherCity ??= "";
+            WeatherFolders ??= DefaultWeatherFolders();
+            ConfigVersion = 9;
+        }
+
+        // Phase 10: opt-in Wallhaven wallpaper source. Off by default.
+        if (ConfigVersion < 10)
+        {
+            WallhavenEnabled = false;
+            WallhavenQuery ??= "";
+            WallhavenCategory = "general";
+            WallhavenSorting = "toplist";
+            WallhavenTopRange = "1w";
+            ConfigVersion = 10;
+        }
+
         if (MonitorMode is not (MonitorModeSame or MonitorModePerMonitor))
         {
             MonitorMode = MonitorModeSame;
@@ -235,10 +310,30 @@ foreach (var (action, spec) in DefaultHotkeys())
         Excluded ??= [];
         ExtraFolders ??= [];
         Collections ??= [];
+        WeatherFolders ??= DefaultWeatherFolders();
+        WeatherCity ??= "";
+        if (WeatherMode is not (WeatherModeWeatherOnly or WeatherModeWeatherAndTime))
+        {
+            WeatherMode = WeatherModeWeatherOnly;
+        }
         DailyWallpaperLastDate ??= "";
         DayFolder ??= "";
         NightFolder ??= "";
         RootFolder ??= "";
+
+        WallhavenQuery ??= "";
+        if (WallhavenCategory is not ("all" or "general" or "anime" or "general+anime"))
+        {
+            WallhavenCategory = "general";
+        }
+        if (WallhavenSorting is not ("toplist" or "random" or "views" or "favorites" or "date_added"))
+        {
+            WallhavenSorting = "toplist";
+        }
+        if (WallhavenTopRange is not ("1d" or "3d" or "1w" or "1M"))
+        {
+            WallhavenTopRange = "1w";
+        }
 
 if (AutoChangeIntervalMinutes < 1)
         {
@@ -309,6 +404,17 @@ if (AutoChangeIntervalMinutes < 1)
         LastUpdateCheck = LastUpdateCheck,
         SkippedVersion = SkippedVersion,
         Excluded = [.. Excluded ?? []],
+        WeatherEnabled = WeatherEnabled,
+        WeatherMode = WeatherMode,
+        WeatherCity = WeatherCity,
+        WeatherLatitude = WeatherLatitude,
+        WeatherLongitude = WeatherLongitude,
+        WeatherFolders = new Dictionary<string, string>(WeatherFolders ?? DefaultWeatherFolders()),
+        WallhavenEnabled = WallhavenEnabled,
+        WallhavenQuery = WallhavenQuery,
+        WallhavenCategory = WallhavenCategory,
+        WallhavenSorting = WallhavenSorting,
+        WallhavenTopRange = WallhavenTopRange,
         ConfigVersion = ConfigVersion,
     };
 }

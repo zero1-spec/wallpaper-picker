@@ -150,7 +150,7 @@ internal sealed class WallpaperEngine(WalldContext owner)
             owner.SyncPickerSettings();
             AppConfig config = owner.Config;
 
-            List<string> folders = WallpaperSources.GetAutoChangeFolders(config, DateTime.Now);
+            List<string> folders = WallpaperSources.GetAutoChangeFolders(config, DateTime.Now, owner.WeatherCondition);
             List<WallpaperFile> files = WallpaperLibrary.Scan(folders);
             files = WallpaperLibrary.FilterByCollection(files, owner.GetActiveCollectionPaths());
             files = files.Where(file => !config.IsExcluded(file.Path)).ToList();

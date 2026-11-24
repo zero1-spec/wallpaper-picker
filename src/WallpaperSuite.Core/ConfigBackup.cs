@@ -35,8 +35,10 @@ public static class ConfigBackup
     public sealed record ImportResult(List<string> RestoredFiles, List<string> MissingFolders);
 
     /// <summary>Writes the allowlisted files that exist into a new zip at <paramref name="zipPath"/>.</summary>
-    public static List<string> Export(string zipPath)
+    /// <param name="dataDir">Optional data directory override (defaults to <see cref="AppPaths.DataDir"/>); used by tests.</param>
+    public static List<string> Export(string zipPath, string? dataDir = null)
     {
+        dataDir ??= AppPaths.DataDir;
         var exported = new List<string>();
         var temp = zipPath + ".tmp";
         try
@@ -46,7 +48,7 @@ public static class ConfigBackup
             {
                 foreach (var name in Allowlist)
                 {
-                    var path = Path.Combine(AppPaths.DataDir, name);
+                    var path = Path.Combine(dataDir, name);
                     if (File.Exists(path))
                     {
                         archive.CreateEntryFromFile(path, name, CompressionLevel.Optimal);
@@ -70,8 +72,10 @@ public static class ConfigBackup
     /// config.json, then writes each file atomically. Returns restored files and any
     /// configured folders that do not exist on this machine.
     /// </summary>
-    public static ImportResult Import(string zipPath)
+    /// <param name="dataDir">Optional data directory override (defaults to <see cref="AppPaths.DataDir"/>); used by tests.</param>
+    public static ImportResult Import(string zipPath, string? dataDir = null)
     {
+        dataDir ??= AppPaths.DataDir;
         var files = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         using (var fs = File.OpenRead(zipPath))
@@ -129,9 +133,10 @@ public static class ConfigBackup
         }
 
         var restored = new List<string>();
+        Directory.CreateDirectory(dataDir);
         foreach (var (name, bytes) in files)
         {
-            var dest = Path.Combine(AppPaths.DataDir, name);
+            var dest = Path.Combine(dataDir, name);
             var temp = dest + ".tmp";
             File.WriteAllBytes(temp, bytes);
             File.Move(temp, dest, overwrite: true);

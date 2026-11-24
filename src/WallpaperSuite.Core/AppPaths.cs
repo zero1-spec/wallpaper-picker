@@ -10,12 +10,17 @@ public static class AppPaths
     // Historical folder name, kept stable so existing installs keep their data.
     private const string DataFolderName = "WallpaperPicker";
 
-    static AppPaths() => DataDirValue = InitDataDir();
-
-    private static readonly string DataDirValue;
+    private static string? _dataDirOverride;
+    private static string? _dataDirValue;
 
     /// <summary>%APPDATA%\WallpaperPicker (created if missing, together with subfolders).</summary>
-    public static string DataDir => DataDirValue;
+    public static string DataDir => _dataDirOverride ?? (_dataDirValue ??= InitDataDir());
+
+    /// <summary>
+    /// Overrides the data directory (tests only). Pass null to restore the real
+    /// %APPDATA%\WallpaperPicker location. Never called by the shipping apps.
+    /// </summary>
+    public static void SetDataDirOverride(string? dir) => _dataDirOverride = string.IsNullOrWhiteSpace(dir) ? null : dir;
 
     public static string ConfigFile => Path.Combine(DataDir, "config.json");
 
@@ -37,6 +42,9 @@ public static class AppPaths
 
     /// <summary>Downloaded wallpapers of the day (opt-in feature).</summary>
     public static string DailyDir => Path.Combine(DataDir, "daily");
+
+    /// <summary>Downloaded Wallhaven wallpapers (opt-in feature).</summary>
+    public static string WallhavenDir => Path.Combine(DataDir, "wallhaven");
 
     /// <summary>Wallpapers shipped with the app, installed next to the binaries.</summary>
     public static string BuiltInWallpapersDir => Path.Combine(InstallDir, "wallpapers");

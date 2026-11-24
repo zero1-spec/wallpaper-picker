@@ -21,3 +21,6 @@ jobs:
 
       - name: Build
         run: dotnet build WallpaperSuite.sln -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test WallpaperSuite.sln -c Release --no-build --verbosity normal

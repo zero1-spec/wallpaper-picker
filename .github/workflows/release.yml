@@ -51,6 +51,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet build WallpaperSuite.sln -c Release -warnaserror
+          dotnet test WallpaperSuite.sln -c Release --no-build --verbosity normal
           .\build\release.ps1
 
       - name: Verify release artifacts exist

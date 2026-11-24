@@ -66,15 +66,39 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _syncAccentColor = new() { Text = "Sync Windows accent color from the wallpaper", AutoSize = true };
     private readonly CheckBox _themeFollowsWallpaper = new() { Text = "Switch Windows light / dark mode to match the wallpaper", AutoSize = true };
 
+    // Weather
+    private readonly CheckBox _weatherEnabled = new() { Text = "Enable weather-based wallpaper switching (uses Open-Meteo)", AutoSize = true };
+    private readonly ComboBox _weatherModeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+    private readonly TextBox _weatherCityBox = new() { Width = 180 };
+    private readonly Button _weatherResolveButton = new() { Text = "Resolve", AutoSize = true };
+    private readonly Label _weatherResolvedLabel = new() { AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(20, 0, 0, 4) };
+    private readonly TextBox _weatherClearBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _weatherCloudyBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _weatherRainBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _weatherSnowBox = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _weatherStormBox = new() { Dock = DockStyle.Fill };
+    private double? _weatherLat;
+    private double? _weatherLon;
+
+    // Wallhaven
+    private readonly CheckBox _wallhavenEnabled = new() { Text = "Wallhaven wallpapers (opt-in)", AutoSize = true };
+    private readonly TextBox _wallhavenQueryBox = new() { Width = 180 };
+    private readonly ComboBox _wallhavenCategoryBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+    private readonly ComboBox _wallhavenSortingBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+    private readonly Button _wallhavenFetchNowButton = new() { Text = "Fetch now", AutoSize = true };
+    private readonly Label _wallhavenStatusLabel = new() { AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(20, 0, 0, 4) };
+    private readonly WallhavenWallpaperService? _wallhaven;
+
     private readonly Button _saveButton = new() { Text = "Save", AutoSize = true };
     private readonly Button _cancelButton = new() { Text = "Cancel", AutoSize = true };
 
-    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update, Action? reload = null)
+    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update, Action? reload = null, WallhavenWallpaperService? wallhaven = null)
     {
         _draft = current.Clone(); // edits apply to a copy so Cancel discards them
         _apply = apply;
         _update = update;
         _reload = reload;
+        _wallhaven = wallhaven;
 
         Text = "WallpaperSuite Settings";
         Font = SystemFonts.MessageBoxFont;
@@ -118,6 +142,7 @@ internal sealed class SettingsForm : Form
         tabs.TabPages.Add(BuildGeneralTab());
         tabs.TabPages.Add(BuildFoldersTab());
         tabs.TabPages.Add(BuildDisplayTab());
+        tabs.TabPages.Add(BuildWeatherTab());
         tabs.TabPages.Add(BuildHotkeysTab());
 
         var buttons = new FlowLayoutPanel
@@ -140,6 +165,30 @@ internal sealed class SettingsForm : Form
 
     private TabPage BuildGeneralTab()
     {
+        _wallhavenCategoryBox.Items.AddRange(new object[] { "general", "anime", "general+anime", "all" });
+        _wallhavenSortingBox.Items.AddRange(new object[] { "toplist", "random", "views", "favorites" });
+        _wallhavenEnabled.CheckedChanged += (_, _) => UpdateWallhavenEnabledState();
+        _wallhavenFetchNowButton.Click += async (_, _) =>
+        {
+            _wallhavenFetchNowButton.Enabled = false;
+            _wallhavenStatusLabel.Text = "Fetching...";
+            try
+            {
+                string status = _wallhaven is not null
+                    ? await _wallhaven.FetchNowAsync()
+                    : "Wallpaper source is unavailable.";
+                _wallhavenStatusLabel.Text = status;
+            }
+            catch (Exception ex)
+            {
+                _wallhavenStatusLabel.Text = $"Error: {ex.Message}";
+            }
+            finally
+            {
+                _wallhavenFetchNowButton.Enabled = _wallhavenEnabled.Checked;
+            }
+        };
+
         var intervalRow = Row(
             new Label { Text = "Every", AutoSize = true, Margin = new Padding(20, 8, 6, 0) },
             _intervalBox,
@@ -156,7 +205,18 @@ internal sealed class SettingsForm : Form
             _pauseOnBatterySaver,
             Spacer(),
             _dailyWallpaper,
-            Hint("Downloads one photo a day from bing.com and applies it. This is one of two optional network features; the other is the update check."),
+            Hint("Downloads one photo a day from bing.com and applies it. This is one of three optional network features (the others are weather and Wallhaven); all are off by default."),
+            Spacer(),
+            _wallhavenEnabled,
+            Row(new Label { Text = "Query (optional, e.g. nature, space):", AutoSize = true, Margin = new Padding(20, 8, 6, 0) }, _wallhavenQueryBox),
+            Row(
+                new Label { Text = "Category:", AutoSize = true, Margin = new Padding(20, 8, 6, 0) },
+                _wallhavenCategoryBox,
+                new Label { Text = "Sorting:", AutoSize = true, Margin = new Padding(6, 8, 6, 0) },
+                _wallhavenSortingBox,
+                _wallhavenFetchNowButton),
+            _wallhavenStatusLabel,
+            Hint("Searches wallhaven.cc for high-resolution SFW wallpapers and applies new ones. Off by default; no network or timer runs while it is off."),
             Spacer(),
             _autoCheckUpdates,
             Row(_checkNowButton, _versionLabel),
@@ -263,6 +323,68 @@ internal sealed class SettingsForm : Form
             Hint("Bright wallpapers switch Windows (apps and taskbar) to light mode, dark wallpapers to dark mode."));
 
         return Page("Display", page);
+    }
+
+    private TabPage BuildWeatherTab()
+    {
+        _weatherModeBox.Items.AddRange(new object[] { "Weather only", "Weather + time of day" });
+        _weatherResolveButton.Click += (_, _) => ResolveWeatherCity();
+        _weatherEnabled.CheckedChanged += (_, _) => _weatherResolveButton.Enabled = _weatherEnabled.Checked;
+
+        var modeRow = Row(new Label { Text = "Mode:", AutoSize = true, Margin = new Padding(0, 8, 6, 0) }, _weatherModeBox);
+        var cityRow = Row(new Label { Text = "City:", AutoSize = true, Margin = new Padding(0, 8, 6, 0) }, _weatherCityBox, _weatherResolveButton);
+
+        var page = Stack(
+            _weatherEnabled,
+            Hint("Uses the free Open-Meteo API (no API key). Off by default; no network or timer runs while it is off."),
+            modeRow,
+            Heading("Location"),
+            cityRow,
+            _weatherResolvedLabel,
+            Hint("Enter a city and click Resolve once to fill coordinates. Weather data © Open-Meteo.com (CC BY 4.0)."),
+            Heading("Folders per condition"),
+            Hint("Choose a folder for each weather bucket; leave a folder empty to fall back to the normal library."),
+            LabeledFolderRow("Clear:", _weatherClearBox),
+            LabeledFolderRow("Cloudy:", _weatherCloudyBox),
+            LabeledFolderRow("Rain:", _weatherRainBox),
+            LabeledFolderRow("Snow:", _weatherSnowBox),
+            LabeledFolderRow("Storm:", _weatherStormBox));
+
+        return Page("Weather", page);
+    }
+
+    private async void ResolveWeatherCity()
+    {
+        string query = _weatherCityBox.Text.Trim();
+        if (query.Length == 0)
+        {
+            Warn("Enter a city first.");
+            return;
+        }
+
+        _weatherResolveButton.Enabled = false;
+        try
+        {
+            WeatherService.CityResult? city = await WeatherService.ResolveCityAsync(query);
+            if (city is null)
+            {
+                _weatherResolvedLabel.Text = $"No match for '{query}'.";
+                return;
+            }
+
+            _weatherLat = city.Latitude;
+            _weatherLon = city.Longitude;
+            _weatherCityBox.Text = city.Name;
+            _weatherResolvedLabel.Text = $"{city.Name} ({city.Latitude:0.###}, {city.Longitude:0.###})";
+        }
+        catch (Exception ex)
+        {
+            Warn($"Could not resolve city:\n{ex.Message}");
+        }
+        finally
+        {
+            _weatherResolveButton.Enabled = _weatherEnabled.Checked;
+        }
     }
 
     private TabPage BuildHotkeysTab()
@@ -422,6 +544,18 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private void UpdateWallhavenEnabledState()
+    {
+        bool enabled = _wallhavenEnabled.Checked;
+        _wallhavenQueryBox.Enabled = enabled;
+        _wallhavenCategoryBox.Enabled = enabled;
+        _wallhavenSortingBox.Enabled = enabled;
+        _wallhavenFetchNowButton.Enabled = enabled;
+    }
+
+    private string WeatherFolder(string condition)
+        => _draft.WeatherFolders is not null && _draft.WeatherFolders.TryGetValue(condition, out string? folder) ? folder ?? "" : "";
+
     private void UpdateHiddenLabel()
     {
         int hidden = _draft.Excluded.Count;
@@ -500,6 +634,30 @@ internal sealed class SettingsForm : Form
         _syncAccentColor.Checked = _draft.SyncAccentColor;
         _themeFollowsWallpaper.Checked = _draft.ThemeFollowsWallpaper;
 
+        _weatherEnabled.Checked = _draft.WeatherEnabled;
+        _weatherModeBox.SelectedIndex = string.Equals(_draft.WeatherMode, AppConfig.WeatherModeWeatherAndTime, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        _weatherCityBox.Text = _draft.WeatherCity;
+        _weatherLat = _draft.WeatherLatitude;
+        _weatherLon = _draft.WeatherLongitude;
+        if (_weatherLat is { } lat && _weatherLon is { } lon && !string.IsNullOrWhiteSpace(_draft.WeatherCity))
+        {
+            _weatherResolvedLabel.Text = $"{_draft.WeatherCity} ({lat:0.###}, {lon:0.###})";
+        }
+        _weatherClearBox.Text = WeatherFolder("Clear");
+        _weatherCloudyBox.Text = WeatherFolder("Cloudy");
+        _weatherRainBox.Text = WeatherFolder("Rain");
+        _weatherSnowBox.Text = WeatherFolder("Snow");
+        _weatherStormBox.Text = WeatherFolder("Storm");
+        _weatherResolveButton.Enabled = _draft.WeatherEnabled;
+
+        _wallhavenEnabled.Checked = _draft.WallhavenEnabled;
+        _wallhavenQueryBox.Text = _draft.WallhavenQuery;
+        int categoryIndex = Array.IndexOf(new[] { "general", "anime", "general+anime", "all" }, _draft.WallhavenCategory);
+        _wallhavenCategoryBox.SelectedIndex = categoryIndex >= 0 ? categoryIndex : 0;
+        int sortingIndex = Array.IndexOf(new[] { "toplist", "random", "views", "favorites" }, _draft.WallhavenSorting);
+        _wallhavenSortingBox.SelectedIndex = sortingIndex >= 0 ? sortingIndex : 0;
+        UpdateWallhavenEnabledState();
+
         UpdateEnabledState();
     }
 
@@ -559,6 +717,25 @@ internal sealed class SettingsForm : Form
         _draft.FitMode = FitModes[Math.Max(0, _fitModeBox.SelectedIndex)];
         _draft.SyncAccentColor = _syncAccentColor.Checked;
         _draft.ThemeFollowsWallpaper = _themeFollowsWallpaper.Checked;
+
+        _draft.WeatherEnabled = _weatherEnabled.Checked;
+        _draft.WeatherMode = _weatherModeBox.SelectedIndex == 1 ? AppConfig.WeatherModeWeatherAndTime : AppConfig.WeatherModeWeatherOnly;
+        _draft.WeatherCity = _weatherCityBox.Text.Trim();
+        _draft.WeatherLatitude = _weatherLat;
+        _draft.WeatherLongitude = _weatherLon;
+        _draft.WeatherFolders = new Dictionary<string, string>
+        {
+            ["Clear"] = _weatherClearBox.Text.Trim(),
+            ["Cloudy"] = _weatherCloudyBox.Text.Trim(),
+            ["Rain"] = _weatherRainBox.Text.Trim(),
+            ["Snow"] = _weatherSnowBox.Text.Trim(),
+            ["Storm"] = _weatherStormBox.Text.Trim(),
+        };
+
+        _draft.WallhavenEnabled = _wallhavenEnabled.Checked;
+        _draft.WallhavenQuery = _wallhavenQueryBox.Text.Trim();
+        _draft.WallhavenCategory = _wallhavenCategoryBox.SelectedItem as string ?? "general";
+        _draft.WallhavenSorting = _wallhavenSortingBox.SelectedItem as string ?? "toplist";
 
         _draft.Hotkeys[AppConfig.ActionOpenPicker] = _openPickerBox.Spec.Clone();
         _draft.Hotkeys[AppConfig.ActionNextWallpaper] = _nextBox.Spec.Clone();

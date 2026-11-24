@@ -393,3 +393,33 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net10.0-wi
 - [x] Batch 3: README Privacy — added checksum limitation sentence (.sha256 from same release, protects against corruption not compromise; code signing planned)
 - [x] Final verify: `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings; `release.ps1` parses OK; redirect + SHA-256 handling verified in UpdateService.cs
 - [x] dotnet build = 0 errors / 0 warnings (final)
+
+## Phase 9 checklist (weather-based wallpaper switching, opt-in)
+- [x] Core: AppConfig weather fields (WeatherEnabled=false, WeatherMode weather-only/weather-and-time, WeatherCity, WeatherLatitude/Longitude, WeatherFolders dict + DefaultWeatherFolders), ConfigVersion 8->9 migration, default repairs, Clone() copies all
+- [x] Core: WallpaperSources 3-arg GetAutoChangeFolders(config, now, weatherCondition) (2-arg delegates with null); weather folder preferred, weather-and-time uses Day/Night subfolder, falls back to day/night then library; GetWeatherFolder helper
+- [x] Walld: WallpaperEngine.PickNext passes owner.WeatherCondition
+- [x] Walld: new WeatherService (Open-Meteo forecast + geocoding, no API key, 30-min one-shot timer + resume re-check, MapWeatherCode, CurrentCondition, static ResolveCityAsync, User-Agent WallpaperSuite/<version>)
+- [x] Walld: WalldContext wires _weather (ctor Reconfigure, WeatherCondition property, TriggerWeatherUpdate Smart-Pause aware -> _engine.Next(), ApplySettings reconfigure, ReloadConfigFromDisk reconfigure, Shutdown dispose)
+- [x] Walld: SettingsForm Weather tab (enable checkbox, mode combo, city box + Resolve -> coords label, 5 condition folder boxes, LoadValues/OnSave, ResolveWeatherCity async, enable/disable)
+- [x] Offline-first: no HttpClient / no timer while WeatherEnabled is false
+- [x] Docs: README badge/offline bullet/features row/Privacy subsection (Open-Meteo URLs, no key, CC BY 4.0)/settings tabs (5)/config table/troubleshooting/architecture note
+- [x] dotnet build WallpaperSuite.sln = 0 errors / 0 warnings
+
+## Phase 10 checklist (opt-in Wallhaven wallpaper source)
+- [x] Reddit source removed (RedditWallpaperService.cs deleted; all Reddit config/paths/UI/tray removed) after Reddit blocked unauthenticated .json/RSS
+- [x] Core: AppPaths.WallhavenDir (data\wallhaven); WallpaperSources.GetLibraryFolders includes it when WallhavenEnabled
+- [x] Core: AppConfig WallhavenEnabled(false)/WallhavenQuery("")/WallhavenCategory(general)/WallhavenSorting(toplist)/WallhavenTopRange(1w) + WallhavenCategoryCodes map (all=111/general=100/anime=010/general+anime=110); ConfigVersion 9->10 migration; EnsureDefaults repairs (category/sorting/topRange whitelists); Clone() copies all
+- [x] Walld: new WallhavenWallpaperService (one-shot 5s/4h/30min timers, resume re-check, Reconfigure/Dispose gated on WallhavenEnabled; wallhaven.cc/api/v1/search with purity=100, atleast=1920x1080, ratios; w.wallhaven.cc HTTPS-only image; JPEG/PNG magic + 25MB cap; atomic save <yyyyMMdd>_wh_<id>.<ext>; keep newest 60 minus favorites; FetchNowAsync returns status/error string)
+- [x] Walld: WalldContext manages _wallhaven lifecycle (ctor Reconfigure, tray "Wallhaven wallpapers" checkable next to Bing, ToggleWallhavenWallpaper, ApplyWallhavenWallpaper with Smart Pause + balloon "Wallhaven • <res>", Shutdown dispose, ApplySettings wallhavenChanged reconfigure, ReloadConfigFromDisk reconfigure)
+- [x] Walld: SettingsForm General tab Wallhaven controls (enable checkbox, optional query TextBox, Category + Sorting DropDownList, Fetch now -> status label) + LoadValues/OnSave + enable/disable
+- [x] Offline-first: no HttpClient/timer/PowerModeChanged while WallhavenEnabled is false
+- [x] Docs: README badge/offline bullet/features row/Privacy Wallhaven subsection (endpoint, User-Agent, filtering, no telemetry, off by default)/settings tabs/config table/tray menu/troubleshooting/architecture; PROGRESS entry
+- [x] dotnet build WallpaperSuite.sln = 0 errors / 0 warnings
+
+## v0.7.0 (test suite + version bump)
+- [x] Added tests/WallpaperSuite.Tests (xUnit, net10.0-windows) referencing only WallpaperSuite.Core; test packages (Microsoft.NET.Test.Sdk, xunit, xunit.runner.visualstudio, coverlet.collector) live only in the test project � shipping projects stay zero-dependency
+- [x] Tests (AAA, isolated temp dirs via TempDir + AppPaths.SetDataDirOverride, no real %APPDATA%, no network): HotkeySpecTests (parse/format/JSON round-trip), AppConfigTests (EnsureDefaults clamps + Clone deep-copy independence), JsonStoreTests (atomic round-trip, unescaped '+', missing/corrupt fallback), ConfigBackupTests (export/import round-trip, Zip-Slip + non-allowlist rejection, missing config, missing-folder detection), WallpaperLibraryTests (FilterByCollection)
+- [x] ConfigBackup.Export/Import gained an optional dataDir overload (defaults to AppPaths.DataDir) for testability; AppPaths gained SetDataDirOverride test seam (lazy DataDir init)
+- [x] CI: .github/workflows/ci.yml and release.yml run `dotnet test WallpaperSuite.sln -c Release --no-build --verbosity normal` right after the Release build
+- [x] Version 0.6.0 -> 0.7.0 in Walld/WallPicker/WallVideo csproj, installer MyAppVersion, DailyWallpaperService User-Agent, README badges/download/paths
+- [x] dotnet build WallpaperSuite.sln -c Release -warnaserror = 0 errors / 0 warnings; dotnet test = all passing

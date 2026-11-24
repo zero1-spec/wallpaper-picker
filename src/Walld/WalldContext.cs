@@ -31,8 +31,11 @@ internal sealed class WalldContext : ApplicationContext
     private readonly ToolStripMenuItem _liveWallpaperStopItem = new("&Stop live wallpaper");
     private readonly ToolStripMenuItem _currentMenu = new("C&urrent wallpaper");
     private readonly ToolStripMenuItem _dailyItem = new("Wallpaper of the &day (Bing)");
+    private readonly ToolStripMenuItem _wallhavenItem = new("Wallhaven &wallpapers");
     private readonly IntPtr _trayIconHandle; // owned by us, not by the Icon wrapper
     private readonly DailyWallpaperService _daily;
+    private readonly WeatherService _weather;
+    private readonly WallhavenWallpaperService _wallhaven;
     private readonly UpdateService _update;
     private readonly SynchronizationContext _uiContext;
 
@@ -43,6 +46,9 @@ internal sealed class WalldContext : ApplicationContext
     private bool _shutdownStarted;
 
     public AppConfig Config => _config;
+
+    /// <summary>Current weather bucket (Clear/Cloudy/Rain/Snow/Storm) or null when weather is off/unknown.</summary>
+    public string? WeatherCondition => _weather.CurrentCondition;
 
     /// <summary>Returns the paths of the named collection, or null when it does not exist.</summary>
     public IReadOnlyList<string>? GetCollectionPaths(string name)
@@ -83,6 +89,7 @@ internal sealed class WalldContext : ApplicationContext
         _currentMenu.DropDownOpening += (_, _) => RebuildCurrentMenu();
         _currentMenu.DropDownItems.Add("(loading)"); // makes the submenu arrow show before first open
         _dailyItem.Click += (_, _) => ToggleDailyWallpaper();
+        _wallhavenItem.Click += (_, _) => ToggleWallhavenWallpaper();
         _findDuplicatesItem.Click += (_, _) => FindDuplicates();
         _liveWallpaperSetItem.Click += (_, _) => SetLiveWallpaperFromDialog();
         _liveWallpaperStopItem.Click += (_, _) => _router.Execute(IpcCommand.VideoStop);
@@ -101,6 +108,10 @@ internal sealed class WalldContext : ApplicationContext
         ReconfigureAutoChangeTimer();
         _daily = new DailyWallpaperService(this);
         _daily.Reconfigure();
+        _weather = new WeatherService(this);
+        _weather.Reconfigure();
+        _wallhaven = new WallhavenWallpaperService(this);
+        _wallhaven.Reconfigure();
         _update = new UpdateService(this);
         _update.Reconfigure();
         UpdateTrayState();
@@ -327,6 +338,8 @@ internal sealed class WalldContext : ApplicationContext
         }
         catch { }
         try { _daily.Dispose(); } catch { }
+        try { _weather.Dispose(); } catch { }
+        try { _wallhaven.Dispose(); } catch { }
         try { _update.Dispose(); } catch { }
         // Keep LiveWallpaperEnabled so the video comes back at the next start.
         try { StopLiveWallpaper(rememberForNextStart: true); } catch { }
@@ -379,6 +392,7 @@ internal sealed class WalldContext : ApplicationContext
             _liveWallpaperStopItem,
             _autoChangeItem,
             _dailyItem,
+            _wallhavenItem,
             new ToolStripMenuItem("Check for &updates...", null, (_, _) => _update.CheckForUpdatesNow()),
             new ToolStripSeparator(),
             new ToolStripMenuItem("Se&ttings...", null, (_, _) => ShowSettings()),
@@ -574,6 +588,49 @@ internal sealed class WalldContext : ApplicationContext
         Balloon(string.IsNullOrWhiteSpace(copyright) ? title : $"{title}\n{copyright}", ToolTipIcon.Info, "Wallpaper of the day");
     }
 
+    /// <summary>Applies a freshly downloaded Wallhaven wallpaper (respects Smart Pause).</summary>
+    public void ApplyWallhavenWallpaper(string path, string resolution)
+    {
+        if (_shutdownStarted || !_config.WallhavenEnabled)
+        {
+            return;
+        }
+
+        var (skip, reason) = SmartPause.ShouldSkipTick(_config);
+        if (skip)
+        {
+            SimpleLogger.Info($"wallhaven: apply skipped ({reason})");
+            return;
+        }
+
+        if (!_engine.ApplyPath(path))
+        {
+            return;
+        }
+
+        string label = string.IsNullOrWhiteSpace(resolution) ? "Wallhaven" : $"Wallhaven • {resolution}";
+        Balloon(label, ToolTipIcon.Info, "Wallhaven wallpaper");
+    }
+
+    /// <summary>Applies a new wallpaper when the weather condition changes (respects Smart Pause).</summary>
+    public void TriggerWeatherUpdate()
+    {
+        if (_shutdownStarted || !_config.WeatherEnabled)
+        {
+            return;
+        }
+
+        var (skip, reason) = SmartPause.ShouldSkipTick(_config);
+        if (skip)
+        {
+            SimpleLogger.Info($"weather: update skipped ({reason})");
+            return;
+        }
+
+        SimpleLogger.Info("weather: applying a wallpaper for the new condition");
+        _engine.Next();
+    }
+
     private void ToggleDailyWallpaper()
     {
         _config.DailyWallpaperEnabled = !_config.DailyWallpaperEnabled;
@@ -581,6 +638,15 @@ internal sealed class WalldContext : ApplicationContext
         _daily.Reconfigure();
         UpdateTrayState();
         SimpleLogger.Info($"wallpaper of the day {(_config.DailyWallpaperEnabled ? "enabled" : "disabled")}");
+    }
+
+    private void ToggleWallhavenWallpaper()
+    {
+        _config.WallhavenEnabled = !_config.WallhavenEnabled;
+        _configStore.Save(_config);
+        _wallhaven.Reconfigure();
+        UpdateTrayState();
+        SimpleLogger.Info($"wallhaven wallpaper {(_config.WallhavenEnabled ? "enabled" : "disabled")}");
     }
 
     /// <summary>Fills the "Current wallpaper" submenu for whatever is on screen right now.</summary>
@@ -680,7 +746,7 @@ internal sealed class WalldContext : ApplicationContext
         }
 
         // Created on demand, disposed on close — no form kept in RAM while hidden.
-        _settingsForm = new SettingsForm(_config, ApplySettings, _update, ReloadConfigFromDisk);
+        _settingsForm = new SettingsForm(_config, ApplySettings, _update, ReloadConfigFromDisk, _wallhaven);
         _settingsForm.FormClosed += (_, _) => _settingsForm = null;
         _settingsForm.Show();
     }
@@ -698,6 +764,8 @@ internal sealed class WalldContext : ApplicationContext
             UpdateTrayState();
             RebuildCollectionMenu();
             ReconfigureAutoChangeTimer();
+            _weather.Reconfigure();
+            _wallhaven.Reconfigure();
             _hotkeys.Configure(_config.Hotkeys);
             SimpleLogger.Info("config reloaded from disk after backup import");
         }
@@ -723,11 +791,29 @@ internal sealed class WalldContext : ApplicationContext
 
     bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
     bool autoCheckChanged = config.AutoCheckUpdates != _config.AutoCheckUpdates;
+    bool weatherChanged = config.WeatherEnabled != _config.WeatherEnabled
+        || !string.Equals(config.WeatherMode, _config.WeatherMode, StringComparison.Ordinal)
+        || !string.Equals(config.WeatherCity, _config.WeatherCity, StringComparison.Ordinal)
+        || config.WeatherLatitude != _config.WeatherLatitude
+        || config.WeatherLongitude != _config.WeatherLongitude;
+    bool wallhavenChanged = config.WallhavenEnabled != _config.WallhavenEnabled
+        || !string.Equals(config.WallhavenQuery, _config.WallhavenQuery, StringComparison.Ordinal)
+        || !string.Equals(config.WallhavenCategory, _config.WallhavenCategory, StringComparison.Ordinal)
+        || !string.Equals(config.WallhavenSorting, _config.WallhavenSorting, StringComparison.Ordinal)
+        || !string.Equals(config.WallhavenTopRange, _config.WallhavenTopRange, StringComparison.Ordinal);
     config.EnsureDefaults();
     _config = config;
     if (dailyChanged)
     {
         _daily.Reconfigure();
+    }
+    if (weatherChanged)
+    {
+        _weather.Reconfigure();
+    }
+    if (wallhavenChanged)
+    {
+        _wallhaven.Reconfigure();
     }
     if (autoCheckChanged)
     {
@@ -818,6 +904,8 @@ internal sealed class WalldContext : ApplicationContext
         _autoChangeItem.Checked = _config.AutoChangeEnabled;
         _autoStartItem.Checked = _config.StartWithWindows;
         _dailyItem.Checked = _config.DailyWallpaperEnabled;
+        _wallhavenItem.Checked = _config.WallhavenEnabled;
+        _wallhavenItem.Text = "Wallhaven wallpapers";
     }
 
     private static Process? FindRunningPicker()

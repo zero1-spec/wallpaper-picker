@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <!-- Same low-memory runtime settings as the daemon.
          InvariantGlobalization must stay off: WPF's font/text stack needs real culture data. -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
