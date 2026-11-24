@@ -67,6 +67,10 @@ PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 - Picker focus: added `PickerFocus.Take(this)` after `Activate(); Focus();` in `ShowOnCursorMonitor`.
 - Hotkeys: `Alt+Shift+N`/`Alt+Shift+B` old defaults migrated to `Alt+Shift+Right`/`Alt+Shift+Left` via `ConfigVersion` gating (user-changed hotkeys never touched).
 - HotkeyManager: logs `registered <combo>` / `FAILED <combo> error <code>` for each registration.
+- Picker input (bug fix): `MainWindow.Input.cs` `Window_PreviewKeyDown` now guards centrally — when `Keyboard.FocusedElement` is a `TextBox` (search box, collection name, tag editor, or any future text field), single-key shortcuts (F, V, R, M, O, E, C, T, B, H, J, K, L, /, …) no longer fire. Only Esc (close/cancel) and Enter (confirm) are handled; editing keys still reach the text box, and `CollectionBox_KeyDown`/`TagBox_KeyDown` keep confirming/cancelling their overlays.
+- README: added "Add your own wallpapers" section under Quick start (press O, drag and drop, or Settings → Folders; files are not copied; sub-folders are scanned) plus the note that `thumbs\` is only a cache and images placed there are ignored. README version badges/file names now 0.5.1.
+- Picker empty state (first run): `UpdateEmptyState` now shows the centered message "No wallpapers found. Press O to choose a folder, or drag and drop a folder here." when the scan finds no images.
+- Version 0.5.1: `Walld.csproj`, `WallPicker.csproj`, `WallVideo.csproj`, installer `MyAppVersion`, and the Bing `User-Agent` ("WallpaperSuite/0.5.1") all bumped; `UpdateService` derives its User-Agent from the assembly version automatically.
 
 ## Installer
 - `build\publish.ps1`: publishes Walld + WallPicker (Release, win-x64, self-contained, no single-file, no trimming) to `dist\WallpaperSuite`.

@@ -250,7 +250,7 @@ internal sealed class DailyWallpaperService : IDisposable
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("WallpaperSuite/0.5");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("WallpaperSuite/0.5.1");
         return client;
     }
 

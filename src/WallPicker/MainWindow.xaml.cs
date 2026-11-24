@@ -941,7 +941,7 @@ _ = StartScanAsync();
 
         EmptyText.Text = _scanning
             ? "Scanning..."
-            : "No wallpapers found  -  press O to choose a folder (built-in wallpapers can be turned on in Settings)";
+            : "No wallpapers found. Press O to choose a folder, or drag and drop a folder here.";
         EmptyText.Visibility = Visibility.Visible;
     }
 

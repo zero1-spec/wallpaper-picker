@@ -10,14 +10,14 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
 <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue?style=for-the-badge&logo=dotnet" alt=".NET 8"></a>
 <img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.5.0-green?style=for-the-badge" alt="Version 0.5.0">
+<img src="https://img.shields.io/badge/Version-0.5.1-green?style=for-the-badge" alt="Version 0.5.1">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
 <img src="https://img.shields.io/badge/Offline-By%20default%20(two%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; two optional network features">
 </p>
 
 <p>
-<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.5.0-blue?style=for-the-badge" alt="Download v0.5.0"></a>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.5.1-blue?style=for-the-badge" alt="Download v0.5.1"></a>
 </p>
 
 <p>
@@ -110,7 +110,7 @@ Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kep
 
 ## Install
 
-1. Download `WallpaperSetup-0.5.0.exe` from Releases.
+1. Download `WallpaperSetup-0.5.1.exe` from Releases.
 2. Run it. The installer is per-user (`%LOCALAPPDATA%\Programs\WallpaperSuite`) — **no administrator rights needed**. "Start with Windows" is checked by default.
 3. The publish is self-contained (`.NET 8 runtime bundled`), so you do **not** need to install .NET separately.
 4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
@@ -123,7 +123,17 @@ Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kep
 
 ## Quick start
 
-After install, `walld.exe` starts minimized to the tray with "Start with Windows". Right-click the tray icon to open the picker, change wallpaper, or open Settings. The picker opens straight onto the built-in wallpapers until you choose your own folder (<kbd>O</kbd> in the picker, or Settings → Folders).
+After install, `walld.exe` starts minimized to the tray with "Start with Windows". Right-click the tray icon to open the picker, change wallpaper, or open Settings. The picker opens straight onto the built-in wallpapers until you choose your own folder.
+
+### Add your own wallpapers
+
+The app works on the 16 built-in wallpapers until you point it at your photos. There are three ways to add a folder, and **files are never copied** — the app only reads the paths where they already live, and sub-folders are scanned recursively:
+
+- Press <kbd>O</kbd> in the picker: opens a folder browser, sets it as the main folder, and re-scans immediately.
+- Drag and drop a folder (or image files) onto the picker window: the paths are added as extra folders (Settings → Folders) and the library re-scans.
+- Settings → Folders: type or browse the main folder and any extra folders, then confirm.
+
+The `thumbs\` folder inside `%APPDATA%\WallpaperPicker` is **only a thumbnail cache**. Images placed there are ignored — it is safe to delete at any time; the cache rebuilds on the next scan.
 
 ### Keyboard shortcuts
 
@@ -254,7 +264,7 @@ To build the installer:
 .\build\build-installer.ps1
 ```
 
-Output: `installer\Output\WallpaperSetup-0.5.0.exe`.
+Output: `installer\Output\WallpaperSetup-0.5.1.exe`.
 
 <details>
 <summary>Architecture / Project structure</summary>

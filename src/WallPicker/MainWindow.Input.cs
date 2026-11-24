@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace WallPicker;
@@ -11,6 +12,29 @@ public partial class MainWindow
     {
         if (_closing)
         {
+            return;
+        }
+
+        // While a text box owns the keyboard (search box, collection name,
+        // tag editor, or any future text field), single-key shortcuts must
+        // not fire: typing "nature" must not trigger F/V/R/M/O/C/T/etc.
+        // Only Esc (close/cancel) and Enter (confirm) are handled here;
+        // everything else is left to the text box so Backspace, arrow keys
+        // and ordinary editing still work. CollectionBox_KeyDown and
+        // TagBox_KeyDown confirm/cancel their overlays on Enter/Escape.
+        if (Keyboard.FocusedElement is TextBox)
+        {
+            if (e.Key == Key.Enter && SearchHost.Visibility == Visibility.Visible && SearchBox.IsKeyboardFocusWithin)
+            {
+                HideSearch();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && SearchHost.Visibility == Visibility.Visible && SearchBox.IsKeyboardFocusWithin)
+            {
+                ClearSearch();
+                e.Handled = true;
+            }
+
             return;
         }
 

@@ -2,7 +2,7 @@
 ; Build: iscc installer\WallpaperSetup.iss
 
 #define MyAppName "WallpaperSuite"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "WallpaperSuite"
 #define MyAppExeName "walld.exe"
 
