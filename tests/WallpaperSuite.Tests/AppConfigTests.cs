@@ -85,6 +85,42 @@ public sealed class AppConfigTests
         Assert.Equal("C:\\clear", original.WeatherFolders["Clear"]);
     }
 
+    [Theory]
+    [InlineData(-0.5, 0.0)]
+    [InlineData(1.5, 1.0)]
+    [InlineData(0.25, 0.25)]
+    public void EnsureDefaults_ClampsLiveWallpaperVolume(double configured, double expected)
+    {
+        var config = new AppConfig { ConfigVersion = 11, LiveWallpaperVolume = configured };
+
+        config.EnsureDefaults();
+
+        Assert.Equal(expected, config.LiveWallpaperVolume);
+    }
+
+    [Fact]
+    public void Clone_CopiesLiveWallpaperFields()
+    {
+        var original = new AppConfig
+        {
+            LiveWallpaperEnabled = true,
+            LiveWallpaperPath = @"C:\video.mp4",
+            LiveWallpaperMuted = false,
+            LiveWallpaperVolume = 0.75,
+            LiveWallpaperPauseOnFullscreen = false,
+            LiveWallpaperPauseOnBatterySaver = false,
+        };
+
+        AppConfig clone = original.Clone();
+
+        Assert.True(clone.LiveWallpaperEnabled);
+        Assert.Equal(@"C:\video.mp4", clone.LiveWallpaperPath);
+        Assert.False(clone.LiveWallpaperMuted);
+        Assert.Equal(0.75, clone.LiveWallpaperVolume);
+        Assert.False(clone.LiveWallpaperPauseOnFullscreen);
+        Assert.False(clone.LiveWallpaperPauseOnBatterySaver);
+    }
+
     [Fact]
     public void Clone_DoesNotShareHotkeyInstances()
     {

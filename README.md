@@ -77,7 +77,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 | 🌗 **Theme follows wallpaper** | Optional: switches Windows light / dark mode to match how bright the wallpaper is |
 | ⏸️ **Smart pause** | Skips ticks during fullscreen apps/games or battery saver, logged in `walld.log` |
 | 🎨 **Accent color** | Syncs Windows accent color from the wallpaper's primary palette color (optional, off by default) |
-| 🎬 **Live wallpaper** | Proof of concept: play a video as the desktop background; it comes back after a restart |
+| 🎬 **Live wallpaper** | Play a video as the desktop background with Smart Pause (fullscreen/battery saver) and audio mute/volume controls; restores after a restart |
 | 📁 **Drag and drop** | Drop images or folders onto the picker to add them (paths stored, no file copying) |
 | 🗑️ **Delete from picker** | <kbd>Ctrl</kbd>+<kbd>Delete</kbd> sends the selected image to the Recycle Bin (asks first; built-in wallpapers are protected) |
 | 🔍 **Duplicate finder** | Tray menu finds duplicates by size + SHA-256, sends to Recycle Bin with confirmation, removes missing entries |
@@ -307,7 +307,7 @@ WallpaperSuite/
 │   ├── WallpaperSuite.Core/   # Shared library: config, JSON store, hotkey spec, wallpaper applier, logger, IPC
 │   ├── Walld/                 # walld.exe — WinForms tray daemon (no window), auto-change, duplicates, settings
 │   └── WallPicker/            # wallpicker.exe — WPF arc-carousel picker UI
-│   └── WallVideo/             # wallvideo.exe — proof-of-concept live wallpaper player
+│   └── WallVideo/             # wallvideo.exe — live wallpaper player (Smart Pause + audio controls)
 ├── build/                     # PowerShell build scripts (publish.ps1, build-installer.ps1)
 ├── installer/                 # Inno Setup 6 script → installer/Output/
 ├── docs/screenshots/          # Screenshots (picker.png, tray.png)
@@ -366,7 +366,7 @@ WallpaperSuite/
 - [x] Config backup export/import
 - [x] .NET 10 (LTS) + unit tests
 - [x] Theme follows wallpaper brightness
-- [ ] Video / live wallpaper beyond the proof of concept
+- [x] Live wallpaper with Smart Pause and audio controls
 - [ ] Code signing for the installer
 
 ## Releasing

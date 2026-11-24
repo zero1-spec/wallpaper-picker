@@ -66,6 +66,16 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _syncAccentColor = new() { Text = "Sync Windows accent color from the wallpaper", AutoSize = true };
     private readonly CheckBox _themeFollowsWallpaper = new() { Text = "Switch Windows light / dark mode to match the wallpaper", AutoSize = true };
 
+    // Live wallpaper
+    private readonly CheckBox _liveEnabled = new() { Text = "Enable live wallpaper", AutoSize = true };
+    private readonly TextBox _livePathBox = new() { Dock = DockStyle.Fill };
+    private readonly Button _liveBrowseButton = new() { Text = "Browse...", AutoSize = true };
+    private readonly CheckBox _liveMuted = new() { Text = "Mute audio", AutoSize = true };
+    private readonly NumericUpDown _liveVolume = new() { Minimum = 0, Maximum = 100, Width = 60 };
+    private readonly CheckBox _livePauseFullscreen = new() { Text = "Pause on fullscreen app/game", AutoSize = true };
+    private readonly CheckBox _livePauseBattery = new() { Text = "Pause on battery saver", AutoSize = true };
+    private readonly List<Control> _liveControls = new();
+
     // Weather
     private readonly CheckBox _weatherEnabled = new() { Text = "Enable weather-based wallpaper switching (uses Open-Meteo)", AutoSize = true };
     private readonly ComboBox _weatherModeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
@@ -310,6 +320,28 @@ internal sealed class SettingsForm : Form
             _ => $"{screens} screens detected.",
         };
 
+        _liveBrowseButton.Click += (_, _) =>
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Select video for live wallpaper",
+                Filter = "Video files (*.mp4;*.webm;*.mkv;*.mov;*.wmv)|*.mp4;*.webm;*.mkv;*.mov;*.wmv|All files (*.*)|*.*",
+            };
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _livePathBox.Text = dialog.FileName;
+            }
+        };
+        _liveMuted.CheckedChanged += (_, _) => _liveVolume.Enabled = _liveEnabled.Checked && !_liveMuted.Checked;
+        _liveEnabled.CheckedChanged += (_, _) => UpdateLiveEnabledState();
+        _liveControls.AddRange(new Control[] { _livePathBox, _liveBrowseButton, _liveMuted, _liveVolume, _livePauseFullscreen, _livePauseBattery });
+
+        var livePathRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0) };
+        livePathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        livePathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        livePathRow.Controls.Add(_livePathBox, 0, 0);
+        livePathRow.Controls.Add(_liveBrowseButton, 1, 0);
+
         var page = Stack(
             Heading("Multiple screens"),
             _sameOnAllScreens,
@@ -320,7 +352,14 @@ internal sealed class SettingsForm : Form
             Heading("Windows colors"),
             _syncAccentColor,
             _themeFollowsWallpaper,
-            Hint("Bright wallpapers switch Windows (apps and taskbar) to light mode, dark wallpapers to dark mode."));
+            Hint("Bright wallpapers switch Windows (apps and taskbar) to light mode, dark wallpapers to dark mode."),
+            Heading("Live wallpaper"),
+            _liveEnabled,
+            livePathRow,
+            Row(_liveMuted, _liveVolume, new Label { Text = "%", AutoSize = true, Margin = new Padding(6, 8, 0, 0) }),
+            _livePauseFullscreen,
+            _livePauseBattery,
+            Hint("Plays a video behind the desktop icons. Audio is muted by default; smart pause pauses playback during fullscreen apps/games or while battery saver is on."));
 
         return Page("Display", page);
     }
@@ -553,6 +592,16 @@ internal sealed class SettingsForm : Form
         _wallhavenFetchNowButton.Enabled = enabled;
     }
 
+    private void UpdateLiveEnabledState()
+    {
+        bool enabled = _liveEnabled.Checked;
+        foreach (Control control in _liveControls)
+        {
+            control.Enabled = enabled;
+        }
+        _liveVolume.Enabled = enabled && !_liveMuted.Checked;
+    }
+
     private string WeatherFolder(string condition)
         => _draft.WeatherFolders is not null && _draft.WeatherFolders.TryGetValue(condition, out string? folder) ? folder ?? "" : "";
 
@@ -633,6 +682,14 @@ internal sealed class SettingsForm : Form
         _fitModeBox.SelectedIndex = Math.Max(0, Array.IndexOf(FitModes, _draft.FitMode));
         _syncAccentColor.Checked = _draft.SyncAccentColor;
         _themeFollowsWallpaper.Checked = _draft.ThemeFollowsWallpaper;
+
+        _liveEnabled.Checked = _draft.LiveWallpaperEnabled;
+        _livePathBox.Text = _draft.LiveWallpaperPath;
+        _liveMuted.Checked = _draft.LiveWallpaperMuted;
+        _liveVolume.Value = (int)Math.Round(Math.Clamp(_draft.LiveWallpaperVolume, 0.0, 1.0) * 100.0);
+        _livePauseFullscreen.Checked = _draft.LiveWallpaperPauseOnFullscreen;
+        _livePauseBattery.Checked = _draft.LiveWallpaperPauseOnBatterySaver;
+        UpdateLiveEnabledState();
 
         _weatherEnabled.Checked = _draft.WeatherEnabled;
         _weatherModeBox.SelectedIndex = string.Equals(_draft.WeatherMode, AppConfig.WeatherModeWeatherAndTime, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
@@ -717,6 +774,13 @@ internal sealed class SettingsForm : Form
         _draft.FitMode = FitModes[Math.Max(0, _fitModeBox.SelectedIndex)];
         _draft.SyncAccentColor = _syncAccentColor.Checked;
         _draft.ThemeFollowsWallpaper = _themeFollowsWallpaper.Checked;
+
+        _draft.LiveWallpaperEnabled = _liveEnabled.Checked;
+        _draft.LiveWallpaperPath = _livePathBox.Text.Trim();
+        _draft.LiveWallpaperMuted = _liveMuted.Checked;
+        _draft.LiveWallpaperVolume = (double)_liveVolume.Value / 100.0;
+        _draft.LiveWallpaperPauseOnFullscreen = _livePauseFullscreen.Checked;
+        _draft.LiveWallpaperPauseOnBatterySaver = _livePauseBattery.Checked;
 
         _draft.WeatherEnabled = _weatherEnabled.Checked;
         _draft.WeatherMode = _weatherModeBox.SelectedIndex == 1 ? AppConfig.WeatherModeWeatherAndTime : AppConfig.WeatherModeWeatherOnly;

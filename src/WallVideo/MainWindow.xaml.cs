@@ -38,6 +38,10 @@ internal sealed class MainWindow : Window
 
     private readonly MediaElement _media;
     private readonly bool _topLevelTest;
+    private readonly bool _pauseOnFullscreen;
+    private readonly bool _pauseOnBatterySaver;
+    private DispatcherTimer? _pauseTimer;
+    private bool _paused;
     private IntPtr _hwnd;
     private bool _pinBottom;
     private bool _mediaOpened;
@@ -48,6 +52,24 @@ internal sealed class MainWindow : Window
     public MainWindow(string videoPath, bool topLevelTest)
     {
         _topLevelTest = topLevelTest;
+
+        // Load the live-wallpaper audio/pause settings (missing/corrupt config -> defaults).
+        AppConfig config;
+        try
+        {
+            config = new JsonStore<AppConfig>(AppPaths.ConfigFile).Load();
+            config.EnsureDefaults();
+        }
+        catch
+        {
+            config = new AppConfig();
+        }
+
+        _pauseOnFullscreen = config.LiveWallpaperPauseOnFullscreen;
+        _pauseOnBatterySaver = config.LiveWallpaperPauseOnBatterySaver;
+        bool muted = config.LiveWallpaperMuted;
+        double volume = muted ? 0.0 : Math.Clamp(config.LiveWallpaperVolume, 0.0, 1.0);
+        SimpleLogger.Info($"Live wallpaper: audio muted={muted} volume={volume:0.00} pauseFullscreen={_pauseOnFullscreen} pauseBattery={_pauseOnBatterySaver}");
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -65,7 +87,8 @@ internal sealed class MainWindow : Window
         _media = new MediaElement
         {
             Source = new Uri(videoPath, UriKind.Absolute),
-            IsMuted = true,
+            IsMuted = muted,
+            Volume = volume,
             LoadedBehavior = MediaState.Manual,
             UnloadedBehavior = MediaState.Manual,
             Stretch = Stretch.UniformToFill,
@@ -102,6 +125,44 @@ internal sealed class MainWindow : Window
 
             await AttachToDesktopAsync();
         };
+
+        Closed += (_, _) => _pauseTimer?.Stop();
+        StartPauseMonitor();
+    }
+
+    /// <summary>Starts the 2-second smart-pause monitor (only when a pause option is enabled).</summary>
+    private void StartPauseMonitor()
+    {
+        if (!_pauseOnFullscreen && !_pauseOnBatterySaver)
+        {
+            return;
+        }
+
+        _pauseTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _pauseTimer.Tick += (_, _) => UpdatePauseState();
+        _pauseTimer.Start();
+        SimpleLogger.Info("Live wallpaper: smart-pause monitor started (2s)");
+    }
+
+    /// <summary>Pauses/resumes the video on state transitions only (never spams the log).</summary>
+    private void UpdatePauseState()
+    {
+        bool fullscreen = _pauseOnFullscreen && SmartPauseState.IsFullscreenRunning();
+        bool battery = !fullscreen && _pauseOnBatterySaver && SmartPauseState.IsBatterySaverOn();
+        bool shouldPause = fullscreen || battery;
+
+        if (shouldPause && !_paused)
+        {
+            _paused = true;
+            _media.Pause();
+            SimpleLogger.Info(fullscreen ? "Paused live wallpaper: fullscreen" : "Paused live wallpaper: battery saver");
+        }
+        else if (!shouldPause && _paused)
+        {
+            _paused = false;
+            _media.Play();
+            SimpleLogger.Info("Resumed live wallpaper");
+        }
     }
 
     private async Task AttachToDesktopAsync()

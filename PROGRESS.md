@@ -423,3 +423,13 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net10.0-wi
 - [x] CI: .github/workflows/ci.yml and release.yml run `dotnet test WallpaperSuite.sln -c Release --no-build --verbosity normal` right after the Release build
 - [x] Version 0.6.0 -> 0.7.0 in Walld/WallPicker/WallVideo csproj, installer MyAppVersion, DailyWallpaperService User-Agent, README badges/download/paths
 - [x] dotnet build WallpaperSuite.sln -c Release -warnaserror = 0 errors / 0 warnings; dotnet test = all passing
+
+## v0.7.x (live wallpaper production-ready)
+- [x] AppConfig: LiveWallpaperMuted(true)/LiveWallpaperVolume(0.5, clamp 0..1)/LiveWallpaperPauseOnFullscreen(true)/LiveWallpaperPauseOnBatterySaver(true); ConfigVersion 10->11 migration; EnsureDefaults clamp; Clone copies all
+- [x] Shared SmartPauseState in WallpaperSuite.Core (SHQueryUserNotificationState fullscreen + GetSystemPowerStatus battery); Walld/SmartPause delegates to it (behavior unchanged); WallVideo uses it
+- [x] WallVideo: loads AppConfig via JsonStore, applies IsMuted/Volume to MediaElement; 2s DispatcherTimer smart-pause monitor (pauses on fullscreen/battery, logs transitions only, stopped on Closed); TopLevelDesktop attach logic untouched
+- [x] SettingsForm Display tab: Live wallpaper section (enable, video path + Browse, mute + 0-100% volume, pause on fullscreen, pause on battery)
+- [x] WalldContext: ApplySettings detects LiveWallpaper* changes (no longer overrides them from disk) and ApplyLiveWallpaperChange starts/restarts/stops wallvideo; ReloadConfigFromDisk re-applies
+- [x] Tests: AppConfigTests volume clamp + Clone copies LiveWallpaper* fields
+- [x] Docs: README live wallpaper feature/roadmap/tree updated; PROGRESS entry
+- [x] dotnet build -c Release -warnaserror = 0/0; dotnet test = all passing

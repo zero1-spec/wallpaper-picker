@@ -27,39 +27,7 @@ internal static class SmartPause
         return (false, "");
     }
 
-    public static bool IsFullscreenRunning()
-    {
-        try
-        {
-            var state = WinApi.QUERY_USER_NOTIFICATION_STATE.QUNS_NOT_PRESENT;
-            int hr = WinApi.SHQueryUserNotificationState(ref state);
-            if (hr != 0)
-            {
-                return false;
-            }
-            return state == WinApi.QUERY_USER_NOTIFICATION_STATE.QUNS_RUNNING_D3D_FULL_SCREEN
-                || state == WinApi.QUERY_USER_NOTIFICATION_STATE.QUNS_PRESENTATION_MODE;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsFullscreenRunning() => SmartPauseState.IsFullscreenRunning();
 
-    public static bool IsBatterySaverOn()
-    {
-        try
-        {
-            if (!WinApi.GetSystemPowerStatus(out var status))
-            {
-                return false;
-            }
-            // On battery (AC line offline) is treated as battery-saver-active.
-            return status.ACLineStatus == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsBatterySaverOn() => SmartPauseState.IsBatterySaverOn();
 }

@@ -91,6 +91,18 @@ public sealed class AppConfig
     /// <summary>When true, the live wallpaper is playing; the daemon restores it at startup.</summary>
     public bool LiveWallpaperEnabled { get; set; }
 
+    /// <summary>When true (default), the live wallpaper audio is muted.</summary>
+    public bool LiveWallpaperMuted { get; set; } = true;
+
+    /// <summary>Live wallpaper volume (0.0..1.0); ignored while muted.</summary>
+    public double LiveWallpaperVolume { get; set; } = 0.5;
+
+    /// <summary>Pause the live wallpaper while a fullscreen app/game runs (default on).</summary>
+    public bool LiveWallpaperPauseOnFullscreen { get; set; } = true;
+
+    /// <summary>Pause the live wallpaper while battery saver is on (default on).</summary>
+    public bool LiveWallpaperPauseOnBatterySaver { get; set; } = true;
+
     public const string MonitorModeSame = "same";
     public const string MonitorModePerMonitor = "per-monitor";
 
@@ -302,6 +314,16 @@ foreach (var (action, spec) in DefaultHotkeys())
             ConfigVersion = 10;
         }
 
+        // Phase 11: live wallpaper audio + smart pause controls.
+        if (ConfigVersion < 11)
+        {
+            LiveWallpaperMuted = true;
+            LiveWallpaperVolume = 0.5;
+            LiveWallpaperPauseOnFullscreen = true;
+            LiveWallpaperPauseOnBatterySaver = true;
+            ConfigVersion = 11;
+        }
+
         if (MonitorMode is not (MonitorModeSame or MonitorModePerMonitor))
         {
             MonitorMode = MonitorModeSame;
@@ -334,6 +356,8 @@ foreach (var (action, spec) in DefaultHotkeys())
         {
             WallhavenTopRange = "1w";
         }
+
+        LiveWallpaperVolume = Math.Clamp(LiveWallpaperVolume, 0.0, 1.0);
 
 if (AutoChangeIntervalMinutes < 1)
         {
@@ -394,6 +418,10 @@ if (AutoChangeIntervalMinutes < 1)
         ExtraFolders = [.. ExtraFolders],
         LiveWallpaperPath = LiveWallpaperPath,
         LiveWallpaperEnabled = LiveWallpaperEnabled,
+        LiveWallpaperMuted = LiveWallpaperMuted,
+        LiveWallpaperVolume = LiveWallpaperVolume,
+        LiveWallpaperPauseOnFullscreen = LiveWallpaperPauseOnFullscreen,
+        LiveWallpaperPauseOnBatterySaver = LiveWallpaperPauseOnBatterySaver,
         IncludeBuiltInWallpapers = IncludeBuiltInWallpapers,
         DayNightEnabled = DayNightEnabled,
         MonitorMode = MonitorMode,

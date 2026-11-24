@@ -545,6 +545,22 @@ internal sealed class WalldContext : ApplicationContext
         SimpleLogger.Info(rememberForNextStart ? "live wallpaper: paused until next start" : "live wallpaper: stopped");
     }
 
+    /// <summary>
+    /// Starts, restarts or stops the live wallpaper to match the current config.
+    /// Called after settings change and after a backup import.
+    /// </summary>
+    private void ApplyLiveWallpaperChange()
+    {
+        if (!_config.LiveWallpaperEnabled || string.IsNullOrWhiteSpace(_config.LiveWallpaperPath))
+        {
+            StopLiveWallpaper(rememberForNextStart: false);
+            return;
+        }
+
+        // Restart so audio/pause changes take effect immediately.
+        SetLiveWallpaper(_config.LiveWallpaperPath);
+    }
+
     /// <summary>Brings back the video wallpaper that was playing when the daemon last stopped.</summary>
     private void RestoreLiveWallpaper()
     {
@@ -760,6 +776,7 @@ internal sealed class WalldContext : ApplicationContext
             disk.EnsureDefaults();
             _config = disk;
 
+            ApplyLiveWallpaperChange();
             ApplyAutoStart(_config.StartWithWindows);
             UpdateTrayState();
             RebuildCollectionMenu();
@@ -786,8 +803,6 @@ internal sealed class WalldContext : ApplicationContext
         config.LastApplied = disk.LastApplied;
         config.Collections = disk.Collections;
         config.DailyWallpaperLastDate = _config.DailyWallpaperLastDate;
-        config.LiveWallpaperEnabled = _config.LiveWallpaperEnabled;
-        config.LiveWallpaperPath = _config.LiveWallpaperPath;
 
     bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
     bool autoCheckChanged = config.AutoCheckUpdates != _config.AutoCheckUpdates;
@@ -801,6 +816,12 @@ internal sealed class WalldContext : ApplicationContext
         || !string.Equals(config.WallhavenCategory, _config.WallhavenCategory, StringComparison.Ordinal)
         || !string.Equals(config.WallhavenSorting, _config.WallhavenSorting, StringComparison.Ordinal)
         || !string.Equals(config.WallhavenTopRange, _config.WallhavenTopRange, StringComparison.Ordinal);
+    bool liveChanged = config.LiveWallpaperEnabled != _config.LiveWallpaperEnabled
+        || !string.Equals(config.LiveWallpaperPath, _config.LiveWallpaperPath, StringComparison.Ordinal)
+        || config.LiveWallpaperMuted != _config.LiveWallpaperMuted
+        || config.LiveWallpaperVolume != _config.LiveWallpaperVolume
+        || config.LiveWallpaperPauseOnFullscreen != _config.LiveWallpaperPauseOnFullscreen
+        || config.LiveWallpaperPauseOnBatterySaver != _config.LiveWallpaperPauseOnBatterySaver;
     config.EnsureDefaults();
     _config = config;
     if (dailyChanged)
@@ -818,6 +839,10 @@ internal sealed class WalldContext : ApplicationContext
     if (autoCheckChanged)
     {
         _update.Reconfigure();
+    }
+    if (liveChanged)
+    {
+        ApplyLiveWallpaperChange();
     }
         _configStore.Save(_config); // atomic save
         try
