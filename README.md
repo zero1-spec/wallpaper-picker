@@ -4,7 +4,7 @@
 
 # WallpaperSuite
 
-Lightweight, offline-first wallpaper manager for Windows. A background tray daemon applies wallpapers on schedule or hotkey; a WPF arc-carousel picker opens only when you need it. Ships with 16 built-in wallpapers, so it works the moment it is installed.
+Lightweight, offline-first wallpaper manager for Windows. A background tray daemon applies wallpapers on schedule or hotkey; a WPF picker with modular themes opens only when you need it. Ships with 16 built-in wallpapers, so it works the moment it is installed.
 
 <p>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
@@ -64,7 +64,8 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 
 | Area | What it does |
 |------|-------------|
-| 🎨 **Picker** | Arc carousel over a frosted (blurred) copy of the selected wallpaper, 16:9 previews, a 5-color swatch strip per wallpaper, accent color that follows the selection, glow under the center card, keycap hint bar, search by filename and tags |
+| 🎨 **Picker themes** | Three modular, extensible themes: **Skewed Accordion** (slanted parallelogram cards with hover expansion, top filter pill), **Centered Carousel** (prominent center card with animated side previews), **Classic Grid** (clean responsive grid fallback). Switched via tray **Themes** submenu or Settings → Display. |
+| 🎨 **Picker (legacy arc)** | Arc carousel over a frosted (blurred) copy of the selected wallpaper, 16:9 previews, a 5-color swatch strip per wallpaper, accent color that follows the selection, glow under the center card, keycap hint bar, search by filename and tags |
 | 🖼️ **Built-in wallpapers** | 16 wallpapers ship with the app (space, nature, night skies, abstract), so the picker works on first launch. Turn them off in Settings → Folders. Credits: [`assets/wallpapers/CREDITS.md`](assets/wallpapers/CREDITS.md) |
 | 🖥️ **Multi-monitor** | Optional: a different wallpaper on each screen. Next / auto-change fill every screen; the picker sets the screen it is open on (<kbd>Shift</kbd>+<kbd>Enter</kbd> = all screens); Previous restores the whole arrangement |
 | ⭐ **Favorites** | Heart button (`F`), favorites-only filter (`V`), favorites cycle with `B`, or from the tray's **Current wallpaper** menu |
@@ -187,9 +188,9 @@ Open the picker with the tray menu or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W
 
 ### Tray menu
 
-Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Find duplicates…**, **Live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Wallhaven wallpapers** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
+Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Themes** submenu (radio-checked: Skewed Accordion, Centered Carousel, Classic Grid), **Find duplicates…**, **Live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Wallhaven wallpapers** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
 
-Settings has five tabs: **General** (startup, auto-change, smart pause, wallpaper of the day, Wallhaven wallpapers), **Folders** (main folder, built-in wallpapers, extra folders, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, accent color, light/dark theme sync), **Weather** (weather-based switching via Open-Meteo, mode, city/coordinates, per-condition folders) and **Hotkeys**.
+Settings has five tabs: **General** (startup, auto-change, smart pause, wallpaper of the day, Wallhaven wallpapers), **Folders** (main folder, built-in wallpapers, extra folders, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, picker theme, accent color, light/dark theme sync), **Weather** (weather-based switching via Open-Meteo, mode, city/coordinates, per-condition folders) and **Hotkeys**.
 
 <details>
 <summary>CLI commands walld.exe</summary>
@@ -249,6 +250,7 @@ Important `config.json` options:
 | `WeatherFolders` | Map of condition (Clear/Cloudy/Rain/Snow/Storm) to folder (empty = fall back to the library) |
 | `Excluded` | Wallpapers hidden with "Never show again" |
 | `ActiveCollection` | Collection name for auto-change filtering (empty = all) |
+| `ActiveWallpaperTheme` | Picker theme: `skewed-accordion`, `centered-carousel`, or `classic-grid` (default `skewed-accordion`) |
 | `SyncAccentColor` | Sync Windows accent from wallpaper primary color (default off) |
 | `PauseOnFullscreen` / `PauseOnBatterySaver` | Smart pause (default on) |
 | `AutoChangeIntervalMinutes` | Auto-change interval, 1–1440 (default 30) |
@@ -304,9 +306,9 @@ Output: `installer\Output\WallpaperSetup-0.7.0.exe`.
 ```
 WallpaperSuite/
 ├── src/
-│   ├── WallpaperSuite.Core/   # Shared library: config, JSON store, hotkey spec, wallpaper applier, logger, IPC
+│   ├── WallpaperSuite.Core/   # Shared library: config, JSON store, hotkey spec, wallpaper applier, logger, IPC, theme abstraction
 │   ├── Walld/                 # walld.exe — WinForms tray daemon (no window), auto-change, duplicates, settings
-│   └── WallPicker/            # wallpicker.exe — WPF arc-carousel picker UI
+│   ├── WallPicker/            # wallpicker.exe — WPF modular picker UI (Skewed Accordion, Centered Carousel, Classic Grid)
 │   └── WallVideo/             # wallvideo.exe — live wallpaper player (Smart Pause + audio controls)
 ├── build/                     # PowerShell build scripts (publish.ps1, build-installer.ps1)
 ├── installer/                 # Inno Setup 6 script → installer/Output/
@@ -367,6 +369,7 @@ WallpaperSuite/
 - [x] .NET 10 (LTS) + unit tests
 - [x] Theme follows wallpaper brightness
 - [x] Live wallpaper with Smart Pause and audio controls
+- [x] Modular picker theme system (Skewed Accordion, Centered Carousel, Classic Grid)
 - [ ] Code signing for the installer
 
 ## Releasing

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Linq;
 using WallpaperSuite.Core;
+using WallpaperSuite.Core.Themes;
 
 namespace Walld;
 
@@ -26,6 +27,7 @@ internal sealed class WalldContext : ApplicationContext
     private readonly ToolStripMenuItem _autoChangeItem = new("&Auto change");
     private readonly ToolStripMenuItem _autoStartItem = new("Start &with Windows");
     private readonly ToolStripMenuItem _collectionMenu = new("&Collection");
+    private readonly ToolStripMenuItem _themeMenu = new("&Themes");
     private readonly ToolStripMenuItem _findDuplicatesItem = new("&Find duplicates...");
     private readonly ToolStripMenuItem _liveWallpaperSetItem = new("&Live wallpaper: set video...");
     private readonly ToolStripMenuItem _liveWallpaperStopItem = new("&Stop live wallpaper");
@@ -130,7 +132,8 @@ internal sealed class WalldContext : ApplicationContext
 
     /// <summary>Launches the picker; focuses its window if it is already running.</summary>
     public void OpenPicker()
-    {        try
+    {
+        try
         {
             var pickerPath = AppPaths.ResolveSibling(PickerExeName);
             if (pickerPath is null)
@@ -155,8 +158,9 @@ internal sealed class WalldContext : ApplicationContext
                 return;
             }
 
-            using var process = Process.Start(new ProcessStartInfo(pickerPath) { UseShellExecute = true });
-            SimpleLogger.Info($"picker started: {pickerPath}");
+            string themeArg = $"--theme={_config.ActiveWallpaperTheme}";
+            using var process = Process.Start(new ProcessStartInfo(pickerPath, themeArg) { UseShellExecute = true });
+            SimpleLogger.Info($"picker started: {pickerPath} {themeArg}");
         }
         catch (Exception ex)
         {
@@ -378,6 +382,9 @@ internal sealed class WalldContext : ApplicationContext
         _autoChangeItem.Click += (_, _) => _router.Execute(IpcCommand.TogglePause);
         _autoStartItem.Click += (_, _) => ToggleAutoStart();
 
+        // Build themes menu
+        RebuildThemesMenu();
+
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
@@ -387,6 +394,7 @@ internal sealed class WalldContext : ApplicationContext
             new ToolStripMenuItem("&Previous wallpaper", null, (_, _) => _router.Execute(IpcCommand.Prev)),
             _currentMenu,
             _collectionMenu,
+            _themeMenu,
             _findDuplicatesItem,
             _liveWallpaperSetItem,
             _liveWallpaperStopItem,
@@ -402,6 +410,35 @@ internal sealed class WalldContext : ApplicationContext
             new ToolStripMenuItem("E&xit", null, (_, _) => Shutdown()),
         });
         return menu;
+    }
+
+    private void RebuildThemesMenu()
+    {
+        _themeMenu.DropDownItems.Clear();
+
+        foreach (var theme in ThemeRegistry.All)
+        {
+            var localThemeId = theme.Id;
+            var item = new ToolStripMenuItem(theme.DisplayName, null, (_, _) => SetActiveTheme(localThemeId))
+            {
+                Checked = string.Equals(_config.ActiveWallpaperTheme, localThemeId, StringComparison.OrdinalIgnoreCase),
+                ToolTipText = theme.Description,
+            };
+            _themeMenu.DropDownItems.Add(item);
+        }
+    }
+
+    private void SetActiveTheme(string themeId)
+    {
+        if (!ThemeRegistry.Contains(themeId))
+        {
+            return;
+        }
+
+        _config.ActiveWallpaperTheme = themeId;
+        _configStore.Save(_config);
+        RebuildThemesMenu();
+        SimpleLogger.Info($"active theme set to '{themeId}'");
     }
 
     private void RebuildCollectionMenu()

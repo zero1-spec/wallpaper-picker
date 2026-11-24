@@ -433,3 +433,18 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net10.0-wi
 - [x] Tests: AppConfigTests volume clamp + Clone copies LiveWallpaper* fields
 - [x] Docs: README live wallpaper feature/roadmap/tree updated; PROGRESS entry
 - [x] dotnet build -c Release -warnaserror = 0/0; dotnet test = all passing
+
+## v0.7.0 (modular wallpaper picker theme system)
+- [x] Core: AppConfig ActiveWallpaperTheme (default "skewed-accordion") + ConfigVersion 11->12 migration; EnsureDefaults validates known themes, falls back to default; Clone copies field
+- [x] Core: IWallpaperTheme interface (Id, DisplayName, Description, Show/Hide, WallpaperSelected event) in WallpaperSuite.Core.Themes
+- [x] Core: ThemeRegistry static class for centralized theme registration; adding a new theme only requires creating the class and calling Register() once
+- [x] WallPicker: Three built-in themes registered at startup via ThemeRegistry.Register():
+  - **Skewed Accordion** ("skewed-accordion"): slanted parallelogram cards (SkewTransform with counter-skewed content so images stay upright), hover/selection expansion, top floating filter pill (search query box + color filter swatches placeholder + action controls)
+  - **Centered Carousel** ("centered-carousel"): prominent center slanted card with side preview cards, smooth animated reveal on selection, top search bar, bottom hint bar
+  - **Classic Grid** ("classic-grid"): clean responsive grid fallback theme with search filter, top bar with search and counter
+- [x] WalldContext: tray "Themes" submenu with radio-checked items (Checked = true on config.ActiveWallpaperTheme); clicking updates config, saves config.json, rebuilds checkmarks immediately, switches active theme live
+- [x] SettingsForm: Display tab "Picker theme" ComboBox populated from ThemeRegistry.All; changes take effect next picker launch
+- [x] WalldContext.OpenPicker passes `--theme <id>` to wallpicker.exe so the chosen layout is always used
+- [x] Tests: ThemeTests.cs verifies ThemeRegistry lookup/uniqueness, AppConfig ActiveWallpaperTheme default/clamping/fallback, Clone independence
+- [x] Docs: README updated with Themes feature row, picker theme descriptions, tray Themes submenu, settings Display tab, how to add new themes
+- [x] dotnet build WallpaperSuite.sln -c Release -warnaserror = 0 errors / 0 warnings; dotnet test = all 51 tests passing

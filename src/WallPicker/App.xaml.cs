@@ -7,6 +7,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using WallpaperSuite.Core;
+using WallpaperSuite.Core.Themes;
+using WallPicker.Themes;
 
 namespace WallPicker;
 
@@ -35,11 +37,25 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Register built-in themes
+        ThemeRegistry.Register(new SkewedAccordionTheme());
+        ThemeRegistry.Register(new CenteredCarouselTheme());
+        ThemeRegistry.Register(new ClassicGridTheme());
+
         var configStore = new JsonStore<AppConfig>(AppPaths.ConfigFile);
         AppConfig config = configStore.Load();
         config.EnsureDefaults();
 
-        string? folder = ResolveInitialFolder(e.Args, config, configStore);
+        // Parse --theme argument
+        string? themeArg = e.Args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(themeArg))
+        {
+            string themeId = themeArg["--theme=".Length..].Trim();
+            config.ActiveWallpaperTheme = ThemeRegistry.ValidateOrDefault(themeId);
+            configStore.Save(config);
+        }
+
+        string? folder = ResolveInitialFolder(e.Args.Where(a => !a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase)).ToArray(), config, configStore);
         if (string.IsNullOrWhiteSpace(folder))
         {
             Shutdown(0);

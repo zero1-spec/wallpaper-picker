@@ -1,4 +1,6 @@
+using System.IO;
 using WallpaperSuite.Core;
+using WallpaperSuite.Core.Themes;
 
 namespace Walld;
 
@@ -65,6 +67,7 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _fitModeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
     private readonly CheckBox _syncAccentColor = new() { Text = "Sync Windows accent color from the wallpaper", AutoSize = true };
     private readonly CheckBox _themeFollowsWallpaper = new() { Text = "Switch Windows light / dark mode to match the wallpaper", AutoSize = true };
+    private readonly ComboBox _themeBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
 
     // Live wallpaper
     private readonly CheckBox _liveEnabled = new() { Text = "Enable live wallpaper", AutoSize = true };
@@ -342,6 +345,9 @@ internal sealed class SettingsForm : Form
         livePathRow.Controls.Add(_livePathBox, 0, 0);
         livePathRow.Controls.Add(_liveBrowseButton, 1, 0);
 
+        // Theme selection
+        _themeBox.Items.AddRange(ThemeRegistry.All.Select(t => $"{t.DisplayName} ({t.Id})").ToArray());
+
         var page = Stack(
             Heading("Multiple screens"),
             _sameOnAllScreens,
@@ -349,6 +355,9 @@ internal sealed class SettingsForm : Form
             Hint(screenText + " In per-screen mode, Next and auto-change give every screen its own image, and the picker sets the image on the screen it is open on (Shift+Enter sets it on all screens)."),
             Heading("Wallpaper"),
             Row(new Label { Text = "Fit mode:", AutoSize = true, Margin = new Padding(0, 8, 6, 0) }, _fitModeBox),
+            Heading("Picker theme"),
+            Row(new Label { Text = "Theme:", AutoSize = true, Margin = new Padding(0, 8, 6, 0) }, _themeBox),
+            Hint("Changes take effect the next time you open the picker."),
             Heading("Windows colors"),
             _syncAccentColor,
             _themeFollowsWallpaper,
@@ -683,6 +692,10 @@ internal sealed class SettingsForm : Form
         _syncAccentColor.Checked = _draft.SyncAccentColor;
         _themeFollowsWallpaper.Checked = _draft.ThemeFollowsWallpaper;
 
+        // Theme selection
+        int themeIndex = ThemeRegistry.All.ToList().FindIndex(t => string.Equals(t.Id, _draft.ActiveWallpaperTheme, StringComparison.OrdinalIgnoreCase));
+        _themeBox.SelectedIndex = themeIndex >= 0 ? themeIndex : 0;
+
         _liveEnabled.Checked = _draft.LiveWallpaperEnabled;
         _livePathBox.Text = _draft.LiveWallpaperPath;
         _liveMuted.Checked = _draft.LiveWallpaperMuted;
@@ -774,6 +787,12 @@ internal sealed class SettingsForm : Form
         _draft.FitMode = FitModes[Math.Max(0, _fitModeBox.SelectedIndex)];
         _draft.SyncAccentColor = _syncAccentColor.Checked;
         _draft.ThemeFollowsWallpaper = _themeFollowsWallpaper.Checked;
+
+        // Theme selection
+        if (_themeBox.SelectedIndex >= 0 && _themeBox.SelectedIndex < ThemeRegistry.All.Count)
+        {
+            _draft.ActiveWallpaperTheme = ThemeRegistry.All[_themeBox.SelectedIndex].Id;
+        }
 
         _draft.LiveWallpaperEnabled = _liveEnabled.Checked;
         _draft.LiveWallpaperPath = _livePathBox.Text.Trim();

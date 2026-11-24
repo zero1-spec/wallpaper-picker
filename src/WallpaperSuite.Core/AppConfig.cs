@@ -103,6 +103,9 @@ public sealed class AppConfig
     /// <summary>Pause the live wallpaper while battery saver is on (default on).</summary>
     public bool LiveWallpaperPauseOnBatterySaver { get; set; } = true;
 
+    /// <summary>Active wallpaper picker theme id (e.g., "skewed-accordion", "centered-carousel", "classic-grid").</summary>
+    public string ActiveWallpaperTheme { get; set; } = "skewed-accordion";
+
     public const string MonitorModeSame = "same";
     public const string MonitorModePerMonitor = "per-monitor";
 
@@ -324,6 +327,13 @@ foreach (var (action, spec) in DefaultHotkeys())
             ConfigVersion = 11;
         }
 
+        // Phase 12: active wallpaper theme (v0.7.0).
+        if (ConfigVersion < 12)
+        {
+            ActiveWallpaperTheme ??= "skewed-accordion";
+            ConfigVersion = 12;
+        }
+
         if (MonitorMode is not (MonitorModeSame or MonitorModePerMonitor))
         {
             MonitorMode = MonitorModeSame;
@@ -358,6 +368,13 @@ foreach (var (action, spec) in DefaultHotkeys())
         }
 
         LiveWallpaperVolume = Math.Clamp(LiveWallpaperVolume, 0.0, 1.0);
+
+        // Known theme ids — unknown/empty falls back to skewed-accordion.
+        string[] knownThemes = ["skewed-accordion", "centered-carousel", "classic-grid"];
+        if (string.IsNullOrWhiteSpace(ActiveWallpaperTheme) || !knownThemes.Contains(ActiveWallpaperTheme, StringComparer.OrdinalIgnoreCase))
+        {
+            ActiveWallpaperTheme = "skewed-accordion";
+        }
 
 if (AutoChangeIntervalMinutes < 1)
         {
@@ -443,6 +460,7 @@ if (AutoChangeIntervalMinutes < 1)
         WallhavenCategory = WallhavenCategory,
         WallhavenSorting = WallhavenSorting,
         WallhavenTopRange = WallhavenTopRange,
+        ActiveWallpaperTheme = ActiveWallpaperTheme,
         ConfigVersion = ConfigVersion,
     };
 }
