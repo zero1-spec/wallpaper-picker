@@ -507,6 +507,7 @@ internal sealed class UpdateService : IDisposable
 
     private sealed class UpdateAvailableDialog : Form
     {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool SkipVersion { get; set; }
 
         public UpdateAvailableDialog(string tag, Version remote, Version local, string notes, string htmlUrl)

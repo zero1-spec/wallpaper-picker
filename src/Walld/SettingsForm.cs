@@ -23,6 +23,7 @@ internal sealed class SettingsForm : Form
     private readonly AppConfig _draft;
     private readonly Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> _apply;
     private readonly UpdateService _update;
+    private readonly Action? _reload;
 
     // Hotkeys
     private readonly HotkeyBox _openPickerBox = new();
@@ -41,6 +42,8 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _autoCheckUpdates = new() { Text = "Check for updates automatically", AutoSize = true };
     private readonly Button _checkNowButton = new() { Text = "Check now", AutoSize = true };
     private readonly Label _versionLabel = new() { AutoSize = true };
+    private readonly Button _exportBackupButton = new() { Text = "Export backup...", AutoSize = true };
+    private readonly Button _importBackupButton = new() { Text = "Import backup...", AutoSize = true };
 
     // Folders
     private readonly TextBox _rootFolderBox = new() { Dock = DockStyle.Fill };
@@ -53,6 +56,7 @@ internal sealed class SettingsForm : Form
     private readonly DateTimePicker _nightEnd = NewTimePicker();
     private readonly Label _hiddenLabel = new() { AutoSize = true, Margin = new Padding(0, 8, 6, 0) };
     private readonly Button _clearHiddenButton = new() { Text = "Restore all", AutoSize = true };
+    private readonly ComboBox _activeCollectionBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
     private readonly List<Control> _dayNightControls = new();
 
     // Display
@@ -65,11 +69,12 @@ internal sealed class SettingsForm : Form
     private readonly Button _saveButton = new() { Text = "Save", AutoSize = true };
     private readonly Button _cancelButton = new() { Text = "Cancel", AutoSize = true };
 
-    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update)
+    public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update, Action? reload = null)
     {
         _draft = current.Clone(); // edits apply to a copy so Cancel discards them
         _apply = apply;
         _update = update;
+        _reload = reload;
 
         Text = "WallpaperSuite Settings";
         Font = SystemFonts.MessageBoxFont;
@@ -155,10 +160,15 @@ internal sealed class SettingsForm : Form
             Spacer(),
             _autoCheckUpdates,
             Row(_checkNowButton, _versionLabel),
-            Hint("Checks GitHub for a new release at most once per 24 hours. Only the app version is sent; nothing about your machine."));
+            Hint("Checks GitHub for a new release at most once per 24 hours. Only the app version is sent; nothing about your machine."),
+            Spacer(),
+            Row(_exportBackupButton, _importBackupButton),
+            Hint("Back up or transfer your settings, hotkeys, collections, tags and history as a .zip file."));
 
         _autoChangeEnabled.CheckedChanged += (_, _) => UpdateEnabledState();
         _checkNowButton.Click += (_, _) => _update.CheckForUpdatesNow();
+        _exportBackupButton.Click += (_, _) => ExportBackup();
+        _importBackupButton.Click += (_, _) => ImportBackup();
         return Page("General", page);
     }
 
@@ -216,6 +226,9 @@ internal sealed class SettingsForm : Form
             Heading("Extra folders"),
             extraRow,
             Hint("Folders dropped onto the picker also appear here."),
+            Heading("Active collection"),
+            Row(new Label { Text = "Active collection:", AutoSize = true, Margin = new Padding(0, 8, 6, 0) }, _activeCollectionBox),
+            Hint("Auto-change picks only from this collection. \"All wallpapers\" uses the whole library."),
             Heading("Day and night"),
             _dayNightEnabled,
             dayRow,
@@ -453,6 +466,25 @@ internal sealed class SettingsForm : Form
             _extraFoldersList.Items.Add(folder);
         }
 
+        _activeCollectionBox.Items.Add("All wallpapers");
+        foreach (string name in _draft.Collections.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        {
+            _activeCollectionBox.Items.Add(name);
+        }
+        int activeIndex = 0;
+        if (!string.IsNullOrEmpty(_draft.ActiveCollection))
+        {
+            for (int i = 1; i < _activeCollectionBox.Items.Count; i++)
+            {
+                if (string.Equals((string)_activeCollectionBox.Items[i]!, _draft.ActiveCollection, StringComparison.OrdinalIgnoreCase))
+                {
+                    activeIndex = i;
+                    break;
+                }
+            }
+        }
+        _activeCollectionBox.SelectedIndex = activeIndex;
+
         _dayNightEnabled.Checked = _draft.DayNightEnabled;
         _dayFolderBox.Text = _draft.DayFolder;
         _nightFolderBox.Text = _draft.NightFolder;
@@ -512,6 +544,9 @@ internal sealed class SettingsForm : Form
         _draft.RootFolder = root;
         _draft.IncludeBuiltInWallpapers = _includeBuiltIn.Checked;
         _draft.ExtraFolders = _extraFoldersList.Items.Cast<string>().ToList();
+        _draft.ActiveCollection = _activeCollectionBox.SelectedItem as string is { } selectedCollection && selectedCollection != "All wallpapers"
+            ? selectedCollection
+            : "";
         _draft.DayNightEnabled = _dayNightEnabled.Checked;
         _draft.DayFolder = day;
         _draft.NightFolder = night;
@@ -550,6 +585,81 @@ internal sealed class SettingsForm : Form
 
     private void Warn(string text)
         => MessageBox.Show(this, text, "WallpaperSuite", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+    private void Info(string text)
+        => MessageBox.Show(this, text, "WallpaperSuite", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+    private void ExportBackup()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Export WallpaperSuite backup",
+            Filter = "WallpaperSuite Backup (*.zip)|*.zip",
+            FileName = $"WallpaperSuite-backup-{DateTime.Now:yyyyMMdd}.zip",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var files = ConfigBackup.Export(dialog.FileName);
+            Info($"Backup written to:\n{dialog.FileName}\n\nFiles: {string.Join(", ", files)}");
+        }
+        catch (Exception ex)
+        {
+            Warn($"Backup failed:\n{ex.Message}");
+        }
+    }
+
+    private void ImportBackup()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Import WallpaperSuite backup",
+            Filter = "WallpaperSuite Backup (*.zip)|*.zip",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "Importing will overwrite your current settings, hotkeys, collections, tags and history. Continue?",
+                "WallpaperSuite",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        ConfigBackup.ImportResult result;
+        try
+        {
+            result = ConfigBackup.Import(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            Warn($"Import failed:\n{ex.Message}");
+            return;
+        }
+
+        var message = $"Backup imported. Restored: {string.Join(", ", result.RestoredFiles)}.";
+        if (result.MissingFolders.Count > 0)
+        {
+            message +=
+                "\n\nThese folders were not found on this PC and were kept as-is; update them in Settings → Folders:\n- "
+                + string.Join("\n- ", result.MissingFolders);
+        }
+        Info(message);
+
+        // Reload the daemon's live config/hotkeys/timers/tray, then close so this form's
+        // (now stale) draft can never overwrite the freshly imported settings.
+        _reload?.Invoke();
+        Close();
+    }
 
     private List<string> FindDuplicateHotkeys()
     {

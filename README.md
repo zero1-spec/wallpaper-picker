@@ -10,14 +10,14 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
 <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-8-blue?style=for-the-badge&logo=dotnet" alt=".NET 8"></a>
 <img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.5.1-green?style=for-the-badge" alt="Version 0.5.1">
+<img src="https://img.shields.io/badge/Version-0.6.0-green?style=for-the-badge" alt="Version 0.5.1">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
 <img src="https://img.shields.io/badge/Offline-By%20default%20(two%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; two optional network features">
 </p>
 
 <p>
-<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.5.1-blue?style=for-the-badge" alt="Download v0.5.1"></a>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.6.0-blue?style=for-the-badge" alt="Download v0.6.0"></a>
 </p>
 
 <p>
@@ -110,7 +110,7 @@ Downloaded images are stored in `%APPDATA%\WallpaperPicker\daily` (newest 60 kep
 
 ## Install
 
-1. Download `WallpaperSetup-0.5.1.exe` from Releases.
+1. Download `WallpaperSetup-0.6.0.exe` from Releases.
 2. Run it. The installer is per-user (`%LOCALAPPDATA%\Programs\WallpaperSuite`) — **no administrator rights needed**. "Start with Windows" is checked by default.
 3. The publish is self-contained (`.NET 8 runtime bundled`), so you do **not** need to install .NET separately.
 4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
@@ -224,7 +224,9 @@ Important `config.json` options:
 | `AutoChangeIntervalMinutes` | Auto-change interval, 1–1440 (default 30) |
 | `FitMode` | fill / fit / stretch / center / tile |
 
-Everything above has a Settings UI except `ActiveCollection` (use the tray's **Collection** menu).
+Everything above has a Settings UI. `ActiveCollection` can be chosen in **Settings → Folders → Active collection** or from the tray's **Collection** menu.
+
+**Backup & restore:** **Settings → General → Export backup…** writes a `.zip` of your settings, hotkeys, collections, tags and history (`config.json`, `collections.json`, `meta.json`, `history.json`). **Import backup…** restores one on another PC (it warns before overwriting and lists any configured folders that don't exist on the new machine so you can fix them in Settings → Folders).
 
 ## Performance
 
@@ -247,7 +249,7 @@ Why it stays light:
 ## Build from source
 
 Prerequisites:
-- .NET 8 SDK (or newer)
+- .NET 10 SDK (or newer)
 - Optionally Inno Setup 6 (to build the installer): `winget install JRSoftware.InnoSetup`
 - Optionally Python with numpy + Pillow, only to regenerate the abstract wallpapers (`python build/make-abstract-wallpapers.py`)
 
@@ -264,7 +266,7 @@ To build the installer:
 .\build\build-installer.ps1
 ```
 
-Output: `installer\Output\WallpaperSetup-0.5.1.exe`.
+Output: `installer\Output\WallpaperSetup-0.6.0.exe`.
 
 <details>
 <summary>Architecture / Project structure</summary>
@@ -331,6 +333,8 @@ WallpaperSuite/
 - [ ] Code signing for the installer
 
 ## Releasing
+
+Releases are automated by `.github/workflows/release.yml`: push a version tag (`vX.Y.Z`, matching `MyAppVersion` in `installer/WallpaperSetup.iss`) and CI builds the installer, writes the `.sha256`, and publishes a GitHub Release with both files attached. `workflow_dispatch` runs the same build/package as a dry-run without publishing.
 
 Maintainers: attach both files below to every GitHub release, built with `build\release.ps1`:
 

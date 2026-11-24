@@ -680,9 +680,31 @@ internal sealed class WalldContext : ApplicationContext
         }
 
         // Created on demand, disposed on close — no form kept in RAM while hidden.
-        _settingsForm = new SettingsForm(_config, ApplySettings, _update);
+        _settingsForm = new SettingsForm(_config, ApplySettings, _update, ReloadConfigFromDisk);
         _settingsForm.FormClosed += (_, _) => _settingsForm = null;
         _settingsForm.Show();
+    }
+
+    /// <summary>Reloads config/collections from disk (after a backup import) and re-applies everything live.</summary>
+    private void ReloadConfigFromDisk()
+    {
+        try
+        {
+            var disk = _configStore.Load();
+            disk.EnsureDefaults();
+            _config = disk;
+
+            ApplyAutoStart(_config.StartWithWindows);
+            UpdateTrayState();
+            RebuildCollectionMenu();
+            ReconfigureAutoChangeTimer();
+            _hotkeys.Configure(_config.Hotkeys);
+            SimpleLogger.Info("config reloaded from disk after backup import");
+        }
+        catch (Exception ex)
+        {
+            SimpleLogger.Error("failed to reload config after backup import", ex);
+        }
     }
 
     /// <summary>Saves the edited config, syncs autostart and re-registers hotkeys live.</summary>

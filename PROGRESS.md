@@ -4,7 +4,7 @@
 Lightweight Windows wallpaper manager: background daemon `walld.exe` (WinForms tray app, no main form)
 plus WPF picker `wallpicker.exe` (arc/card wallpaper browser). Phase 0 = Core library, Phase 1 = daemon,
 Picker MVP = port of `reference/wallpaper_picker(1).py`.
-.NET 8 / C# 12 / net8.0-windows, no third-party NuGet packages, zero idle CPU, WM_COPYDATA IPC.
+.NET 10 (LTS) / C# 12 / net10.0-windows, no third-party NuGet packages, zero idle CPU, WM_COPYDATA IPC.
 
 ## File checklist — ALL DONE
 ### Root
@@ -16,7 +16,7 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 - [x] PROGRESS.md
 - [x] docs/screenshots/ (created with .gitkeep)
 
-### src/WallpaperSuite.Core (net8.0-windows class library)
+### src/WallpaperSuite.Core (net10.0-windows class library)
 - [x] WallpaperSuite.Core.csproj
 - [x] AppPaths.cs
 - [x] JsonStore.cs (atomic save; relaxed JSON encoder so "Alt+Shift+W" stays readable)
@@ -51,10 +51,140 @@ Picker MVP = port of `reference/wallpaper_picker(1).py`.
 - [x] MetaStore.cs
 - [x] ThumbCache.cs
 
+## WallVideo attach fix (robust WorkerW attach + DPI awareness)
+### Why the old attach failed on new Windows 11 (24H2/25H2/26H2)
+- `FindDesktopWorkerW` sent only `0x052C` with `wParam=0`, which newer builds ignore, and then assumed the classic layout where a `SHELLDLL_DefView` window has a WorkerW parent and an empty WorkerW *sibling* behind it. That sibling is frequently absent on new builds, so `FindWindowEx(... WorkerW ...)` returned `IntPtr.Zero` → "WorkerW not found; cannot attach to desktop".
+- No DPI awareness: the window was sized with `Screen.PrimaryScreen.Bounds` (physical px) assigned to WPF `Width/Height` (DIPs), so on scaled monitors the size/position were wrong after `SetParent`.
+### Changes (src/WallVideo)
+- `MainWindow.xaml.cs` — `AttachToDesktopAsync` now logs the OS build (registry `DisplayVersion`+`CurrentBuild`+`UBR`) and dumps **every top-level window** and **all Progman descendants** (class | handle | visible | parent/title) at attach time, then attaches with ordered fallbacks:
+  - (a) send `0x052C` to Progman with `wParam 0xD`/`lParam 1` **and** classic `0/0`;
+  - (b) classic `WorkerW` sibling after the window containing `SHELLDLL_DefView`;
+  - (c) `WorkerW` that is a direct child of Progman (new layout);
+  - (d) if only Progman exists, `SetParent` to Progman and push the video to `HWND_BOTTOM` so icons stay on top.
+  - Logs which method worked (or why each failed).
+- DPI: `PlaceVideoWindow` sizes/positions from `GetMonitorInfo(MonitorFromPoint(primary))` physical pixels, sizes the WPF window in matching DIPs via `VisualTreeHelper.GetDpi`, then `SetWindowPos` (NOZORDER+NOACTIVATE+FRAMECHANGED) and a second `SetWindowPos(HWND_BOTTOM)` to keep icons clickable above the video.
+- `Program.cs` — calls `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` (fallback `SetProcessDPIAware`) before creating the WPF `Application`.
+- Failure UX: if every method fails, hides the window, shows a friendly tray balloon (`NotifyIcon`), logs the reason, and shuts down cleanly on a 9 s timer (no orphan process). Fixes applied: qualified `System.Windows.Application` (ImplicitUsings ambiguity) and gave `POINT` a constructor.
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo attach fix v2 (visible-window repair + verification, build 26300.26H2)
+### Bug
+- Log said "attached via WorkerW child of Progman" and GPU video engine was ~21% (decoding worked) but nothing was on screen: the old code parented the window but never set `WS_VISIBLE|WS_CHILD`, never cleared `WS_EX_LAYERED`, sized with screen coords instead of the parent's client rect, and never verified visibility.
+### Changes (src/WallVideo/MainWindow.xaml.cs)
+- `AllowsTransparency=false` in the ctor (layered child windows do not render on new builds); `Width/Height=NaN` after attach so WPF does not shrink back to its DIP size.
+- `AttachToDesktopAsync` now: logs Windows build, dumps top-level windows + Progman descendants (class | hwnd | visible | rect | parent), sends `0x052C` (`0xD/1` and `0/0`), then builds an **ordered** attempt list and **verifies after each**:
+  - (b1) classic WorkerW sibling after the SHELLDLL_DefView container,
+  - (b2) classic WorkerW sibling after SHELLDLL_DefView,
+  - (c) WorkerW child of Progman (new layout),
+  - (d) Progman with the video placed just below the Progman-child DefView.
+  - `TryAttach` does `SetParent` → `ApplyVisibleChildStyle` (sets `WS_VISIBLE|WS_CHILD`, strips caption/popup, clears `WS_EX_LAYERED|WS_EX_TOOLWINDOW`) → size to parent **client rect** (fallback virtual screen) → `SetWindowPos(SWP_SHOWWINDOW|NOACTIVATE|FRAMECHANGED)` → WorkerW mode pushed to `HWND_BOTTOM`, Progman mode inserted after DefView → `RedrawWindow(RDW_INVALIDATE|UPDATENOW|ALLCHILDREN|ERASE)` + `ShowWindow(SW_SHOW)` → `VerifyVisible` (IsWindowVisible + non-empty rect).
+  - On failure of a method it detaches (`SetParent` to `IntPtr.Zero`) and tries the next; logs which method worked.
+- `DumpVideoAndProgmanChildren` logs the video rect/parent/client/style (`WS_VISIBLE`,`WS_CHILD`,`WS_EX_LAYERED`), IsWindowVisible, and every Progman child in Z-order (class | hwnd | visible | rect | parent).
+- Failure path unchanged: friendly tray balloon, log, clean shutdown (no orphan).
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo attach fix v3 (pixel-verified attach + correct Z-order, build 26300.26H2)
+### Bug
+- "WorkerW child of Progman" logged success (IsWindowVisible=True, 1920x1080, WS_VISIBLE, not layered) but the static wallpaper stayed on screen: the video was hidden behind the wallpaper layer. `IsWindowVisible` is not a valid success check.
+### Changes (src/WallVideo/MainWindow.xaml.cs)
+- Attach order rewritten (`AttachMode`): **primary** = `ProgmanAfterWorkerW` — `SetParent` to Progman, `SetWindowPos(hWndInsertAfter = the WorkerW child)` so Z-order is SHELLDLL_DefView (top) → video → WorkerW (bottom); **fallback A** = `ProgmanBottom` (HWND_BOTTOM, then raise DefView to HWND_TOP); **fallback B** = `WorkerWTop` (parent into WorkerW, HWND_TOP inside it). Sized to Progman's client rect, `SWP_SHOWWINDOW`, then `RedrawWindow`.
+- Real verification (`VerifyByPixelsAsync`): hides the window and captures a baseline of the clean desktop (4 small 8×8 regions away from icons/taskbar via `Graphics.CopyFromScreen` → ARGB bytes), then after each method waits ~500 ms, samples twice (250 ms apart) and treats the method as successful only if the pixels **changed from baseline** OR are **animating** (two samples differ). Logs `changedFromBaseline`/`animating` per method. `IsWindowVisible` is no longer used as the success criterion.
+- After every method, `DumpProgmanChildren` logs the Progman children Z-order (class | hwnd | visible | rect | parent); the final state is dumped by `DumpVideoAndProgmanChildren`.
+- All methods fail → tray balloon + clean shutdown (unchanged). Build = 0 errors / 0 warnings.
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo attach fix v4 (Z-order fix, toplevel test, reliable pixels, methods C/D, build 26300.26H2)
+### Bug
+- Progman children (top->bottom) were SHELLDLL_DefView, WorkerW; all 3 methods logged changedFromBaseline=False/animating=False and the static wallpaper stayed, yet wallvideo decoded (GPU ~21%). Root cause: `SetWindowPos(hWndInsertAfter)` places the window BELOW that handle, so inserting after WorkerW put the video at index 0 (above DefView); `IsWindowVisible`/old pixel check were unreliable.
+### Changes (src/WallVideo/MainWindow.xaml.cs + Program.cs)
+- **Z-order fixed**: primary `ProgmanAfterDefView` does `SetParent(Progman)` + `SetWindowPos(hWndInsertAfter = SHELLDLL_DefView)` → DefView (top) → video → WorkerW (bottom). `EnsureOrder` logs DefView/video/WorkerW indices and retries the insert once if the order is wrong.
+- **`--toplevel-test` flag** (Program.cs parses it, MainWindow runs `TopLevelTestAsync`): shows the video as a normal borderless full-screen topmost window (no SetParent) for 5 s, logging MediaOpened, NaturalVideoWidth/Height, Position advancing each second, and a painted-sample check — proves whether the video renders at all, then continues to attach.
+- **Reliable pixel check** (`VerifyByPixelsAsync`): window starts at `Opacity=0` so the baseline is the clean desktop (no hide/flicker); waits 1500 ms, samples **6 spread regions** (right half, away from icons/taskbar) **3× at 300 ms**, logs each region's baseline/s1/s2/s3 and diff; success if any region changed from baseline OR animates.
+- **Experimental C** `ProgmanAfterDefViewHideWorker`: after-DefView insert plus `ShowWindow(WorkerW, SW_HIDE)` while running (restored on stop/exit via `RestoreWorker`).
+- **Experimental D** `TopLevel`: no SetParent, `WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT`, `HWND_BOTTOM`, click-through; logs whether icons stay visible/clickable.
+- Every method logs its result; on total failure each method's reason is logged before the tray balloon + clean exit.
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo attach fix v5 (child-style before SetParent, Z-order retry, method E, strict pixels, build 26300.26H2)
+### Bug
+- Video as Progman child never changed a pixel; Z-order ended with video idx 0 (above DefView) despite inserting after DefView; the "success" was a false positive (all 6 regions equal 15360); WorkerW left hidden. Root causes: WPF creates the HWND as a WS_POPUP top-level, SetParent resets styles, and a single SetWindowPos before show did not stick.
+### Changes (src/WallVideo/MainWindow.xaml.cs)
+- **Style before SetParent**: `ApplyChildStyle` clears WS_POPUP and sets WS_CHILD (never both) + WS_VISIBLE BEFORE `SetParent`, then re-asserts after it (SetParent can reset styles). Full style/ex-style logged (`LogWindowStyles`: WS_POPUP, WS_CHILD, WS_CAPTION, WS_VISIBLE, WS_EX_LAYERED, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT) at initial / after-attach / final.
+- **Z-order fixed**: `SetWindowPos(hWndInsertAfter = DefView)` is called after SetParent (with SWP_SHOWWINDOW), again after `ShowWindow`, and `EnsureOrder` logs DefView/video/WorkerW indices and retries the insert once if the order is not DefView→video→WorkerW.
+- **Method E** `ProgmanAfterDefViewLayered`: primary + `WS_EX_LAYERED` + `SetLayeredWindowAttributes(alpha 255, LWA_ALPHA)`.
+- **Removed** the hide-WorkerW experiment (and `_workerToRestore`/`RestoreWorker`); WorkerW is never hidden now.
+- **Strict pixel check** `VerifyByPixelsAsync`: 1500 ms wait, 3 samples 300 ms apart, 6 regions; success ONLY if regions are non-uniform (max≠min) AND s2≠s3 in ≥2 regions; all-equal (e.g. 15360) ⇒ failure. Every region logged (baseline/s1/s2/s3/diff/motion).
+- Every method logs `verdict=SUCCESS|FAIL` with its name; all reasons logged before the tray balloon + clean exit.
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## Settings: ActiveCollection dropdown (Folders tab)
+- `src/Walld/SettingsForm.cs`: added `_activeCollectionBox` (ComboBox, DropDownList) on the Folders tab under an "Active collection" heading. Populated with "All wallpapers" (represents `""`) then `config.Collections` sorted OrdinalIgnoreCase; `LoadValues` selects the entry matching `ActiveCollection` (falls back to "All wallpapers" when empty/missing); `OnSave` writes `""` for "All wallpapers" else the selected name.
+- No WalldContext change needed: `ApplySettings` preserves `ActiveCollection` from the draft (only `Collections` is reloaded from disk), and the tray's Collection submenu rebuilds on `DropDownOpening` so its checkmark stays in sync.
+- README: the Configuration note now says `ActiveCollection` is set in Settings → Folders → Active collection (or the tray Collection menu).
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo attach fix v6 (TopLevelDesktop primary + HWND_BOTTOM pin, build 26300.26H2)
+### Root cause (24H2/25H2/26H2)
+- A WPF window parented as `WS_CHILD` under `Progman`/`WorkerW` is not composited by DWM over the desktop wallpaper layer: the GPU decodes frames and `IsWindowVisible` is true, yet the static wallpaper stays on screen (PROGRESS v1–v5).
+### Fix (src/WallVideo/MainWindow.xaml.cs)
+- New primary `TopLevelDesktop` mode (used first on Windows 11 build ≥ 22621, and as immediate fallback): **no `SetParent`**. The WPF `Window` is borderless (`WindowStyle=None`, `ResizeMode=NoResize`, `ShowInTaskbar=False`, `Topmost=False`, `AllowsTransparency=False`, `Background=Black`) with `WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT` (never in Alt+Tab, never steals focus, clicks pass through to desktop icons), sized to the primary monitor's full physical bounds via `SetWindowPos(HWND_BOTTOM, SWP_NOACTIVATE|SWP_SHOWWINDOW)`.
+- `WM_WINDOWPOSCHANGING` hook (`HwndSource.AddHook(WndProc)`) forces `hwndInsertAfter = HWND_BOTTOM` whenever Windows tries to raise the window, so clicking the desktop never lifts the video over open apps.
+- `MediaElement` stays `LoadedBehavior=Manual`, `UnloadedBehavior=Manual`, `Stretch=UniformToFill`, `IsMuted=True`, loops on `MediaEnded`; `MediaOpened`/`MediaFailed` and window bounds/styles are logged.
+- Existing Progman/WorkerW child modes remain as fallbacks; per-method pixel verification and `verdict=SUCCESS|FAIL` logging unchanged.
+### Build
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo fix v7 (TopLevelDesktop verified by MediaOpened, not CopyFromScreen)
+- Bug: in `TopLevelDesktop` mode the video rendered, then vanished with the "Live wallpaper could not start" balloon because `VerifyByPixelsAsync` uses `Graphics.CopyFromScreen`, which cannot read DWM's hardware-accelerated video surface (samples a uniform buffer) and falsely marked the working mode failed.
+- Fix (`src/WallVideo/MainWindow.xaml.cs`): added `_mediaFailed` (set in `MediaFailed`) and `VerifyTopLevelDesktopAsync` — in `TopLevelDesktop` mode the attach is treated as SUCCEEDED once `MediaOpened` has fired without `MediaFailed`, `IsWindowVisible(hwnd)` is true and `Opacity > 0`, skipping `CopyFromScreen` entirely. Other (child) modes keep the pixel check.
+- The failure timer + tray balloon (`FailAttach`) now only run when no method succeeds (e.g. `MediaFailed` or the window fails to show/position). The `WM_WINDOWPOSCHANGING` → `HWND_BOTTOM` pin is unchanged, keeping the video behind icons and normal windows.
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo fix v8 (Win+D / Show Desktop keeps video visible)
+- Bug: in `TopLevelDesktop` mode, `Win+D` (Show Desktop) minimized the video window and revealed the static wallpaper.
+- Fix (`src/WallVideo/MainWindow.xaml.cs`):
+  - `WndProc` now blocks `WM_SYSCOMMAND` where `(wParam & 0xFFF0) == SC_MINIMIZE` (0xF020) and restores on `WM_SIZE` with `SIZE_MINIMIZED` via `ShowWindow(SW_SHOWNOACTIVATE)`.
+  - `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` (delegate rooted in `_winEventProc`, unhooked on `Closed`) tracks the foreground window: when it is `Progman`/`WorkerW`/contains `SHELLDLL_DefView` (Win+D or desktop click) the video is placed directly behind it (`SetWindowPos(video, fg, SWP_NOMOVE|NOSIZE|NOACTIVATE|SHOWWINDOW)`); when a normal app is foreground the video returns to `HWND_BOTTOM`.
+  - `WM_WINDOWPOSCHANGING` now honors `_desktopInsertAfter` (the desktop foreground window) instead of always forcing `HWND_BOTTOM`, so the video sits behind the desktop but never over apps.
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## WallVideo fix v9 (Progman owner via GWLP_HWNDPARENT for Win+D)
+- Bug: `Win+D` raises `Progman` (paints the static wallpaper) and hides unowned top-level windows; placing the video *behind* `Progman`/`WorkerW` let the static wallpaper cover it.
+- Fix (`src/WallVideo/MainWindow.xaml.cs`): removed the `SetWinEventHook`/`EVENT_SYSTEM_FOREGROUND` Z-order swap (and `_desktopInsertAfter`). In `TopLevelDesktop` mode the window stays top-level (no `WS_CHILD`, no `SetParent`) and `Progman` is set as the **owner** via `SetWindowLongPtr(GWLP_HWNDPARENT = -8, progman)` (64/32-bit helper), keeping `WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT`. The video is pinned with `SetWindowPos(HWND_BOTTOM, SWP_NOACTIVATE|SWP_SHOWWINDOW)` and `WM_WINDOWPOSCHANGING` forces `HWND_BOTTOM`; `WM_SYSCOMMAND`/`SC_MINIMIZE` is still blocked. Logs `owner=Progman(0x...)`.
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## Upgrade to .NET 10 (LTS) + version 0.6.0
+- SDK check: `dotnet --list-sdks` shows 8.0.428 and 11.0.100 (no 10.0 SDK, but 11.0 is newer and the 10.0.15 runtime + `Microsoft.WindowsDesktop.App.Ref 10.0.15` ref packs are installed, so `net10.0-windows` builds).
+- All 4 projects: `TargetFramework` `net8.0-windows` → `net10.0-windows`; `Version` `0.5.1` → `0.6.0` (Core has no Version, stays library).
+- Walld.csproj copy/publish targets: all `net8.0-windows` paths → `net10.0-windows` (wallpicker/wallvideo copy next to walld.exe preserved).
+- Kept: `InvariantGlobalization=false` in WallPicker; GC settings in Walld; zero third-party NuGet.
+- .NET 10 WinForms analyzer WFO1000 (new, treated as error) flagged `UpdateService.UpdateAvailableDialog.SkipVersion`; fixed by annotating it `[DesignerSerializationVisibility(Hidden)]`.
+- Installer `MyAppVersion` → 0.6.0; `DailyWallpaperService` Bing User-Agent → `WallpaperSuite/0.6.0`; README version badges/download/paths → 0.6.0.
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings (SDK 11.0.100 targeting net10.0-windows with 10.0.15 ref packs).
+
+## Settings Backup Export / Import (.zip)
+- New `src/WallpaperSuite.Core/ConfigBackup.cs` (built-in `System.IO.Compression`, zero third-party):
+  - Strict allowlist: `config.json`, `collections.json`, `meta.json`, `history.json` (never `thumbs/`, `converted/`, `daily/`, `logs/`, `export/`).
+  - `Export(zipPath)`: writes allowlisted files that exist into a temp zip, then `File.Move(..., overwrite: true)`; returns exported names.
+  - `Import(zipPath)`: reads entries, rejects any with `/`, `\`, `..` or unknown names (Zip-Slip safe), requires a `config.json` that deserializes to `AppConfig`, then writes each file atomically (temp → `File.Move`); returns `ImportResult(RestoredFiles, MissingFolders)` where MissingFolders lists configured folders (`RootFolder`/`ExtraFolders`/`DayFolder`/`NightFolder`) not present on this PC.
+- `SettingsForm` General tab: **Export backup…** / **Import backup…** buttons. Export uses `SaveFileDialog` (`WallpaperSuite Backup (*.zip)`, default `WallpaperSuite-backup-yyyyMMdd.zip`). Import uses `OpenFileDialog`, confirms (YesNo), calls `ConfigBackup.Import`, shows a success `MessageBox` (listing MissingFolders if any), then invokes the reload callback and closes so the stale draft can't overwrite the import.
+- `WalldContext.ReloadConfigFromDisk()` (passed to SettingsForm) reloads config from disk and re-applies autostart, tray, collection menu, auto-change timer and hotkeys live.
+- `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
+
+## CI + automated release (GitHub Actions)
+- `.github/workflows/ci.yml`: on push/PR to `main`, `windows-latest`, `actions/checkout@v4` + `actions/setup-dotnet@v6` (`10.0.x`), then `dotnet build WallpaperSuite.sln -c Release -warnaserror`.
+- `.github/workflows/release.yml`: on tags `v*` (+ `workflow_dispatch`), `permissions: contents: write`, `windows-latest`; ensures Inno Setup 6 (`ISCC.exe` or `choco install innosetup -y`), verifies the tag (minus `v`) equals `MyAppVersion` in `installer/WallpaperSetup.iss` (fails fast), runs `dotnet build -c Release -warnaserror` + `.\build\release.ps1`, asserts `installer\Output\WallpaperSetup-*.exe` and `.exe.sha256` exist, then `gh release create` (tag pushes only) with `--generate-notes` attaching both files.
+- README Releasing section documents the tag-driven flow; build stays 0 errors / 0 warnings. Both YAML files validated (parse OK).
+
 ## Current step
 PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 `dotnet publish src\Walld -c Release` puts `walld.exe` + `wallpicker.exe` in the same publish folder
-(`src\Walld\bin\Release\net8.0-windows\publish`), verified. Runtime smoke tests passed:
+(`src\Walld\bin\Release\net10.0-windows\publish`), verified. Runtime smoke tests passed:
 - picker launches on the cursor monitor and scans a folder of images
 - thumbnails decode and persist under `%APPDATA%\WallpaperPicker\thumbs`
 - clicking the centered card applies the wallpaper and closes the picker
@@ -150,8 +280,8 @@ PICKER MVP DONE. `dotnet build WallpaperSuite.sln` = 0 errors / 0 warnings.
 - [x] smoke test wallpicker.exe <folder> opens; README picker section + manual checklist; PROGRESS final
 
 ## Manual test checklist (picker)
-Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net8.0-windows\wallpicker.exe <folder>`
-(or use the published pair in `src\Walld\bin\Release\net8.0-windows\publish`).
+Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net10.0-windows\wallpicker.exe <folder>`
+(or use the published pair in `src\Walld\bin\Release\net10.0-windows\publish`).
 
 1. [ ] Picker opens borderless, topmost, on the monitor that contains the mouse cursor.
 2. [ ] Images in the folder appear as arc cards; center card is largest and in focus.
