@@ -32,15 +32,34 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 
 ---
 
-## Screenshots
+## Showcase
 
-<img src="docs/screenshots/picker.png" width="100%" style="max-width:900px;" alt="Picker">
+<div align="center">
 
-Picker: arc-carousel wallpaper browser with palette, favorites, and search.
+<img src="docs/screenshots/demo.gif" width="100%" style="max-width:900px;" alt="WallpaperSuite v0.8.0 picker themes demo">
 
-<img src="docs/screenshots/tray.png" width="320" alt="Tray">
+*Modular picker themes cycling through the 16 built-in wallpapers.*
 
-Tray: system tray menu with auto-change, collections, and live wallpaper controls.
+</div>
+
+### Picker themes
+
+| Arc Carousel *(default)* | Skewed Accordion |
+|:---:|:---:|
+| <img src="docs/screenshots/theme-arc-carousel.png" alt="Arc Carousel theme"> | <img src="docs/screenshots/theme-skewed-accordion.png" alt="Skewed Accordion theme"> |
+| Blurred backdrop, 5-color palette swatches, favorites, collections & tags | Slanted parallelogram slices with smooth accordion expansion & search pill |
+
+| Centered Carousel | Classic Grid |
+|:---:|:---:|
+| <img src="docs/screenshots/theme-centered-carousel.png" alt="Centered Carousel theme"> | <img src="docs/screenshots/theme-classic-grid.png" alt="Classic Grid theme"> |
+| Prominent 16:9 center card with tilted side previews & bottom keycap bar | Clean responsive 16:9 tile grid with palette swatches & search filter |
+
+### System tray & Settings
+
+| System Tray Menu | Settings (Display Tab) |
+|:---:|:---:|
+| <img src="docs/screenshots/tray.png" width="380" alt="System tray menu with Themes submenu and Live wallpaper controls"> | <img src="docs/screenshots/settings.png" width="440" alt="Settings window Display tab"> |
+| Quick access to all 4 **Themes**, collections, auto-change & **Live wallpaper** controls | Configure multi-monitor mode, fit mode, **Picker theme**, accent sync & **Live wallpaper** |
 
 ---
 
@@ -64,8 +83,8 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 
 | Area | What it does |
 |------|-------------|
-| 🎨 **Picker themes** | Three modular, extensible themes: **Skewed Accordion** (slanted parallelogram cards with hover expansion, top filter pill), **Centered Carousel** (prominent center card with animated side previews), **Classic Grid** (clean responsive grid fallback). Switched via tray **Themes** submenu or Settings → Display. |
-| 🎨 **Picker (legacy arc)** | Arc carousel over a frosted (blurred) copy of the selected wallpaper, 16:9 previews, a 5-color swatch strip per wallpaper, accent color that follows the selection, glow under the center card, keycap hint bar, search by filename and tags |
+| 🎨 **Picker themes** | Four modular, extensible themes: **Arc Carousel** (default), **Skewed Accordion** (slanted parallelogram slices with smooth accordion expansion and top filter pill), **Centered Carousel** (prominent center card with smaller side previews), and **Classic Grid** (clean responsive 16:9 grid with search). Switch anytime via tray **Themes** submenu or **Settings → Display**. |
+| 🎨 **Arc Carousel (default)** | Full-screen arc carousel over a frosted (blurred) copy of the selected wallpaper, 16:9 previews, a 5-color swatch strip per wallpaper, accent color that follows the selection, glow under the center card, favorites, collections, tags, keycap hint bar, and search |
 | 🖼️ **Built-in wallpapers** | 16 wallpapers ship with the app (space, nature, night skies, abstract), so the picker works on first launch. Turn them off in Settings → Folders. Credits: [`assets/wallpapers/CREDITS.md`](assets/wallpapers/CREDITS.md) |
 | 🖥️ **Multi-monitor** | Optional: a different wallpaper on each screen. Next / auto-change fill every screen; the picker sets the screen it is open on (<kbd>Shift</kbd>+<kbd>Enter</kbd> = all screens); Previous restores the whole arrangement |
 | ⭐ **Favorites** | Heart button (`F`), favorites-only filter (`V`), favorites cycle with `B`, or from the tray's **Current wallpaper** menu |
@@ -78,7 +97,7 @@ Tray: system tray menu with auto-change, collections, and live wallpaper control
 | 🌗 **Theme follows wallpaper** | Optional: switches Windows light / dark mode to match how bright the wallpaper is |
 | ⏸️ **Smart pause** | Skips ticks during fullscreen apps/games or battery saver, logged in `walld.log` |
 | 🎨 **Accent color** | Syncs Windows accent color from the wallpaper's primary palette color (optional, off by default) |
-| 🎬 **Live wallpaper** | Play a video as the desktop background with Smart Pause (fullscreen/battery saver) and audio mute/volume controls; restores after a restart |
+| 🎬 **Live wallpaper** | Play a video behind your desktop icons with **Smart Pause** (automatically pauses during fullscreen apps/games or battery saver) and **Audio controls** (**Mute** toggle and **Volume** slider in Settings → Display); restores after a restart |
 | 📁 **Drag and drop** | Drop images or folders onto the picker to add them (paths stored, no file copying) |
 | 🗑️ **Delete from picker** | <kbd>Ctrl</kbd>+<kbd>Delete</kbd> sends the selected image to the Recycle Bin (asks first; built-in wallpapers are protected) |
 | 🔍 **Duplicate finder** | Tray menu finds duplicates by size + SHA-256, sends to Recycle Bin with confirmation, removes missing entries |
@@ -188,9 +207,9 @@ Open the picker with the tray menu or <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>W
 
 ### Tray menu
 
-Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Themes** submenu (radio-checked: Skewed Accordion, Centered Carousel, Classic Grid), **Find duplicates…**, **Live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Wallhaven wallpapers** (checkbox), **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
+Right-click the tray icon: **Open picker**, **Next wallpaper**, **Previous wallpaper**, **Current wallpaper** submenu (favorite, show in Explorer, never show again, restore hidden), **Collection** submenu, **Themes** submenu (**Arc Carousel**, **Skewed Accordion**, **Centered Carousel**, **Classic Grid**), **Find duplicates…**, **Live wallpaper: set video…**, **Stop live wallpaper**, **Auto change** (checkbox), **Wallpaper of the day (Bing)** (checkbox), **Wallhaven wallpapers** (checkbox), **Check for updates…**, **Settings…**, **Start with Windows** (checkbox), **Open data folder**, **Exit**.
 
-Settings has five tabs: **General** (startup, auto-change, smart pause, wallpaper of the day, Wallhaven wallpapers), **Folders** (main folder, built-in wallpapers, extra folders, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, picker theme, accent color, light/dark theme sync), **Weather** (weather-based switching via Open-Meteo, mode, city/coordinates, per-condition folders) and **Hotkeys**.
+Settings has five tabs: **General** (startup, auto-change, smart pause, wallpaper of the day, Wallhaven wallpapers, update checks, backup export/import), **Folders** (main folder, built-in wallpapers, extra folders, active collection, day/night folders and hours, hidden wallpapers), **Display** (one wallpaper vs. one per screen, fit mode, picker theme, accent color, light/dark theme sync, live wallpaper with **Smart Pause** and **Mute/Volume** audio controls), **Weather** (weather-based switching via Open-Meteo, mode, city/coordinates, per-condition folders) and **Hotkeys**.
 
 <details>
 <summary>CLI commands walld.exe</summary>
@@ -250,9 +269,11 @@ Important `config.json` options:
 | `WeatherFolders` | Map of condition (Clear/Cloudy/Rain/Snow/Storm) to folder (empty = fall back to the library) |
 | `Excluded` | Wallpapers hidden with "Never show again" |
 | `ActiveCollection` | Collection name for auto-change filtering (empty = all) |
-| `ActiveWallpaperTheme` | Picker theme: `skewed-accordion`, `centered-carousel`, or `classic-grid` (default `skewed-accordion`) |
+| `ActiveWallpaperTheme` | Picker theme: `arc-carousel`, `skewed-accordion`, `centered-carousel`, or `classic-grid` (default `arc-carousel`) |
 | `SyncAccentColor` | Sync Windows accent from wallpaper primary color (default off) |
-| `PauseOnFullscreen` / `PauseOnBatterySaver` | Smart pause (default on) |
+| `PauseOnFullscreen` / `PauseOnBatterySaver` | Smart pause for auto-change (default on) |
+| `LiveWallpaperMuted` / `LiveWallpaperVolume` | Live wallpaper audio mute (default on) and volume `0.0`–`1.0` (default `0.5`) |
+| `LiveWallpaperPauseOnFullscreen` / `LiveWallpaperPauseOnBatterySaver` | Live wallpaper Smart Pause on fullscreen apps/games or battery saver (default on) |
 | `AutoChangeIntervalMinutes` | Auto-change interval, 1–1440 (default 30) |
 | `FitMode` | fill / fit / stretch / center / tile |
 
@@ -308,11 +329,11 @@ WallpaperSuite/
 ├── src/
 │   ├── WallpaperSuite.Core/   # Shared library: config, JSON store, hotkey spec, wallpaper applier, logger, IPC, theme abstraction
 │   ├── Walld/                 # walld.exe — WinForms tray daemon (no window), auto-change, duplicates, settings
-│   ├── WallPicker/            # wallpicker.exe — WPF modular picker UI (Skewed Accordion, Centered Carousel, Classic Grid)
+│   ├── WallPicker/            # wallpicker.exe — WPF modular picker UI (Arc Carousel, Skewed Accordion, Centered Carousel, Classic Grid)
 │   └── WallVideo/             # wallvideo.exe — live wallpaper player (Smart Pause + audio controls)
 ├── build/                     # PowerShell build scripts (publish.ps1, build-installer.ps1)
 ├── installer/                 # Inno Setup 6 script → installer/Output/
-├── docs/screenshots/          # Screenshots (picker.png, tray.png)
+├── docs/screenshots/          # Screenshots & animated showcase (demo.gif, theme-*.png, tray.png, settings.png)
 ├── assets/                    # Icon (icon.png / icon.ico) and built-in wallpapers (assets/wallpapers + CREDITS.md)
 ├── tests/WallpaperSuite.Tests/ # xUnit unit tests for WallpaperSuite.Core
 ├── WallpaperSuite.sln         # Classic .NET solution (5 projects)
@@ -369,7 +390,7 @@ WallpaperSuite/
 - [x] .NET 10 (LTS) + unit tests
 - [x] Theme follows wallpaper brightness
 - [x] Live wallpaper with Smart Pause and audio controls
-- [x] Modular picker theme system (Skewed Accordion, Centered Carousel, Classic Grid)
+- [x] Modular picker theme system (Arc Carousel, Skewed Accordion, Centered Carousel, Classic Grid)
 - [ ] Code signing for the installer
 
 ## Releasing
