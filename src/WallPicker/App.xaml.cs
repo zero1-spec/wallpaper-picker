@@ -79,7 +79,16 @@ public partial class App : System.Windows.Application
             if (theme is not null)
             {
                 ShutdownMode = ShutdownMode.OnLastWindowClose;
-                theme.Show(config, folder, selectedPath => ApplySelectedWallpaper(configStore, config, selectedPath));
+                // Per-monitor mode: like the arc picker, apply on the screen the picker opened on.
+                IReadOnlyList<MonitorInfo> monitors = Array.Empty<MonitorInfo>();
+                MonitorInfo? targetMonitor = null;
+                if (string.Equals(config.MonitorMode, AppConfig.MonitorModePerMonitor, StringComparison.OrdinalIgnoreCase))
+                {
+                    monitors = MonitorWallpaper.GetMonitors();
+                    targetMonitor = monitors.Count > 1 ? MonitorWallpaper.MonitorAtCursor(monitors) : null;
+                }
+
+                theme.Show(config, folder, selectedPath => ApplySelectedWallpaper(configStore, config, selectedPath, monitors, targetMonitor));
                 return;
             }
 
@@ -150,7 +159,12 @@ public partial class App : System.Windows.Application
         return (themeId, folderArg);
     }
 
-    private static void ApplySelectedWallpaper(JsonStore<AppConfig> configStore, AppConfig config, string selectedPath)
+    private static void ApplySelectedWallpaper(
+        JsonStore<AppConfig> configStore,
+        AppConfig config,
+        string selectedPath,
+        IReadOnlyList<MonitorInfo> monitors,
+        MonitorInfo? targetMonitor)
     {
         if (string.IsNullOrWhiteSpace(selectedPath) || !File.Exists(selectedPath))
         {
@@ -159,7 +173,32 @@ public partial class App : System.Windows.Application
         }
 
         string? cacheKey = WallpaperLibrary.TryComputeKey(selectedPath);
-        if (WallpaperApplier.Apply(selectedPath, config.FitMode, cacheKey, out string? error))
+        bool applied;
+        string? error;
+        if (targetMonitor is not null)
+        {
+            // Per-monitor mode: only this screen changes; record the arrangement for Previous.
+            applied = WallpaperApplier.ApplyToMonitor(selectedPath, targetMonitor.Id, config.FitMode, cacheKey, out error);
+            if (applied)
+            {
+                var set = new Dictionary<string, string>(HistoryStore.CurrentSet ?? new(), StringComparer.OrdinalIgnoreCase)
+                {
+                    [targetMonitor.Id] = selectedPath,
+                };
+                HistoryStore.RecordSet(set);
+            }
+        }
+        else
+        {
+            applied = WallpaperApplier.Apply(selectedPath, config.FitMode, cacheKey, out error);
+            if (applied && monitors.Count > 1)
+            {
+                // Per-monitor mode with every screen set at once: keep the set history in sync.
+                HistoryStore.RecordSet(monitors.ToDictionary(m => m.Id, _ => selectedPath));
+            }
+        }
+
+        if (applied)
         {
             config.LastApplied = selectedPath;
             configStore.Save(config);

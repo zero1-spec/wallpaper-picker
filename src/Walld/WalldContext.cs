@@ -436,6 +436,7 @@ internal sealed class WalldContext : ApplicationContext
             return;
         }
 
+        SyncPickerSettings(); // don't write back a stale copy of the picker's edits
         _config.ActiveWallpaperTheme = themeId;
         _configStore.Save(_config);
         RebuildThemesMenu();
@@ -824,6 +825,9 @@ internal sealed class WalldContext : ApplicationContext
             ReconfigureAutoChangeTimer();
             _weather.Reconfigure();
             _wallhaven.Reconfigure();
+            _daily.Reconfigure();
+            _update.Reconfigure();
+            RebuildThemesMenu();
             _hotkeys.Configure(_config.Hotkeys);
             SimpleLogger.Info("config reloaded from disk after backup import");
         }
@@ -837,12 +841,17 @@ internal sealed class WalldContext : ApplicationContext
     private IReadOnlyList<HotkeyRegistrationFailure> ApplySettings(AppConfig config)
     {
         // Values that may have changed while the dialog was open, and that the
-        // dialog does not edit, come from the live config instead of the stale draft.
+        // dialog does not edit, come from their owners instead of the stale draft.
+        // The picker writes favorites, hidden wallpapers, collections and the last
+        // applied path straight to config.json, so refresh those from disk first.
+        SyncPickerSettings();
         config.Favorites = _config.Favorites;
         config.LastApplied = _config.LastApplied;
         config.Collections = _config.Collections;
         config.Excluded = _settingsForm?.ExcludedCleared == true ? [] : _config.Excluded;
         config.DailyWallpaperLastDate = _config.DailyWallpaperLastDate;
+        config.LastUpdateCheck = _config.LastUpdateCheck;   // written by UpdateService
+        config.SkippedVersion = _config.SkippedVersion;     // "Skip this version"
 
     bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
     bool autoCheckChanged = config.AutoCheckUpdates != _config.AutoCheckUpdates;

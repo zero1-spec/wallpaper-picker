@@ -108,6 +108,13 @@ internal sealed class WallhavenWallpaperService : IDisposable
             return "Wallpaper source is shut down.";
         }
 
+        // A scheduled check (or an earlier click) is still running: don't start a second
+        // download, and don't clear the flag that call owns.
+        if (_busy)
+        {
+            return "A fetch is already in progress. Try again in a moment.";
+        }
+
         _busy = true;
         try
         {

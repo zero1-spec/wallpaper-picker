@@ -218,6 +218,11 @@ internal sealed class UpdateService : IDisposable
             using JsonDocument doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
+            // GitHub answered: count this as today's check whatever the outcome (up to date,
+            // draft, skipped, no assets), so auto-check runs at most once per 24 hours.
+            _owner.Config.LastUpdateCheck = DateTime.UtcNow;
+            _owner.SaveConfig();
+
             if (root.TryGetProperty("draft", out var draft) && draft.GetBoolean())
             {
                 Log("Latest release is a draft; skipping.", userTriggered);
@@ -282,9 +287,6 @@ internal sealed class UpdateService : IDisposable
                 return;
             }
 
-            _owner.Config.LastUpdateCheck = DateTime.UtcNow;
-            _owner.SaveConfig();
-
             string body = root.TryGetProperty("body", out var bodyEl)
                 ? (bodyEl.GetString() ?? "").Trim()
                 : "No release notes.";
@@ -333,16 +335,19 @@ internal sealed class UpdateService : IDisposable
             return;
         }
 
+        // Take the pending download before clearing it; the download works on these copies.
         string version = _pendingVersion;
+        string? installerUrl = _installerUrl;
+        string? sha256Url = _sha256Url;
         _installerUrl = null;
         _sha256Url = null;
         _pendingVersion = "";
-        _ = DownloadAndInstallAsync(version);
+        _ = DownloadAndInstallAsync(version, installerUrl, sha256Url);
     }
 
-    private async Task DownloadAndInstallAsync(string version)
+    private async Task DownloadAndInstallAsync(string version, string? installerUrl, string? sha256Url)
     {
-        if (_disposed || _installerUrl is null || _sha256Url is null)
+        if (_disposed || installerUrl is null || sha256Url is null)
             return;
 
         string tempDir = Path.Combine(Path.GetTempPath(), UpdateDirName);
@@ -369,7 +374,7 @@ internal sealed class UpdateService : IDisposable
             {
                 try
                 {
-                    await DownloadInstallerAsync(version, installerPath, cts.Token, p =>
+                    await DownloadInstallerAsync(installerUrl, installerPath, cts.Token, p =>
                         _owner.RunOnUiThread(() => progress.SetProgress(p)));
 
                     if (cts.Token.IsCancellationRequested)
@@ -379,7 +384,7 @@ internal sealed class UpdateService : IDisposable
                         return;
                     }
 
-                    await DownloadSha256Async(sha256Path, cts.Token,
+                    await DownloadSha256Async(sha256Url, sha256Path, cts.Token,
                         p => _owner.RunOnUiThread(() => progress.SetProgress(p + 50)));
 
                     if (cts.Token.IsCancellationRequested)
@@ -442,16 +447,16 @@ internal sealed class UpdateService : IDisposable
         }
     }
 
-    private async Task DownloadInstallerAsync(string version, string targetPath, CancellationToken ct, Action<int> progress)
+    private async Task DownloadInstallerAsync(string installerUrl, string targetPath, CancellationToken ct, Action<int> progress)
     {
-        using var response = await GetAsyncWithRedirects(_http!, new Uri(_installerUrl!), HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await GetAsyncWithRedirects(_http!, new Uri(installerUrl), HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
         using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var file = File.Create(targetPath);
 
         var buffer = new byte[8192];
-        int total = 0;
+        long total = 0;
         int read;
         while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
         {
@@ -464,9 +469,9 @@ internal sealed class UpdateService : IDisposable
         }
     }
 
-    private async Task DownloadSha256Async(string targetPath, CancellationToken ct, Action<int> progress)
+    private async Task DownloadSha256Async(string sha256Url, string targetPath, CancellationToken ct, Action<int> progress)
     {
-        using var response = await GetAsyncWithRedirects(_http!, new Uri(_sha256Url!), HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await GetAsyncWithRedirects(_http!, new Uri(sha256Url), HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         string hashText = await response.Content.ReadAsStringAsync(ct);
         await File.WriteAllTextAsync(targetPath, hashText, ct);
