@@ -4,16 +4,50 @@ namespace WallpaperSuite.Core.Themes;
 
 /// <summary>
 /// Central registry of all available wallpaper picker themes.
-/// Adding a new theme only requires creating the theme class and registering it via <see cref="Register"/>.
-/// The host application (WallPicker) is responsible for registering built-in themes at startup.
+/// Built-in theme descriptors are pre-registered so both Walld (tray/settings)
+/// and WallPicker always see all built-in themes out of the box.
+/// WallPicker registers its concrete WPF <see cref="IWallpaperTheme"/>
+/// implementations against those IDs at startup.
 /// </summary>
 public static class ThemeRegistry
 {
     private static readonly Dictionary<string, IWallpaperTheme> _themes = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<IWallpaperTheme> _ordered = [];
+    private static readonly Dictionary<string, ThemeDescriptor> _descriptorsById = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<ThemeDescriptor> _descriptors = [];
+
+    static ThemeRegistry()
+    {
+        RegisterDescriptor(new ThemeDescriptor(
+            "arc-carousel",
+            "Arc Carousel",
+            "Classic full-screen arc carousel with blurred backdrop, palette swatches, favorites, collections, and tags."));
+        RegisterDescriptor(new ThemeDescriptor(
+            "skewed-accordion",
+            "Skewed Accordion",
+            "Slanted parallelogram slices with smooth accordion expansion and top filter pill."));
+        RegisterDescriptor(new ThemeDescriptor(
+            "centered-carousel",
+            "Centered Carousel",
+            "Prominent center card with smaller side previews and bottom keycap bar."));
+        RegisterDescriptor(new ThemeDescriptor(
+            "classic-grid",
+            "Classic Grid",
+            "Clean responsive 16:9 grid layout with search filter."));
+    }
+
+    private static void RegisterDescriptor(ThemeDescriptor descriptor)
+    {
+        if (!_descriptorsById.ContainsKey(descriptor.Id))
+        {
+            _descriptorsById[descriptor.Id] = descriptor;
+            _descriptors.Add(descriptor);
+        }
+    }
 
     /// <summary>
-    /// Registers a theme. Called once at startup for each built-in theme.
+    /// Registers a concrete theme implementation. Called once at startup by WallPicker
+    /// for each built-in theme (and any custom themes).
     /// </summary>
     public static void Register(IWallpaperTheme theme)
     {
@@ -34,10 +68,11 @@ public static class ThemeRegistry
 
         _themes[theme.Id] = theme;
         _ordered.Add(theme);
+        RegisterDescriptor(new ThemeDescriptor(theme.Id, theme.DisplayName, theme.Description));
     }
 
     /// <summary>
-    /// Gets a theme by its id, or null if not found.
+    /// Gets a concrete theme implementation by its id, or null if not registered in this process.
     /// </summary>
     public static IWallpaperTheme? Get(string id)
     {
@@ -51,19 +86,26 @@ public static class ThemeRegistry
     }
 
     /// <summary>
-    /// Gets all registered themes in registration order.
+    /// Gets all registered concrete theme implementations in registration order.
     /// </summary>
     public static IReadOnlyList<IWallpaperTheme> All => _ordered;
 
     /// <summary>
-    /// Returns true if a theme with the given id is registered.
+    /// Gets all known theme descriptors (built-in themes plus any custom registered themes).
+    /// Always populated in both Walld and WallPicker.
     /// </summary>
-    public static bool Contains(string id) => !string.IsNullOrWhiteSpace(id) && _themes.ContainsKey(id);
+    public static IReadOnlyList<ThemeDescriptor> Descriptors => _descriptors;
 
     /// <summary>
-    /// Gets the default theme id ("skewed-accordion").
+    /// Returns true if a theme with the given id is known (built-in or registered).
     /// </summary>
-    public static string DefaultThemeId => "skewed-accordion";
+    public static bool Contains(string id)
+        => !string.IsNullOrWhiteSpace(id) && (_descriptorsById.ContainsKey(id) || _themes.ContainsKey(id));
+
+    /// <summary>
+    /// Gets the default theme id ("arc-carousel").
+    /// </summary>
+    public static string DefaultThemeId => "arc-carousel";
 
     /// <summary>
     /// Validates that the given theme id is known; returns the default if not.

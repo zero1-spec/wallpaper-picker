@@ -448,3 +448,11 @@ Run `dotnet build WallpaperSuite.sln`, then `src\WallPicker\bin\Debug\net10.0-wi
 - [x] Tests: ThemeTests.cs verifies ThemeRegistry lookup/uniqueness, AppConfig ActiveWallpaperTheme default/clamping/fallback, Clone independence
 - [x] Docs: README updated with Themes feature row, picker theme descriptions, tray Themes submenu, settings Display tab, how to add new themes
 - [x] dotnet build WallpaperSuite.sln -c Release -warnaserror = 0 errors / 0 warnings; dotnet test = all 51 tests passing
+
+## v0.8.0 (audit, bug fixes, version bump)
+- [x] Version 0.7.0 -> 0.8.0 in Walld/WallPicker/WallVideo csproj, installer MyAppVersion, DailyWallpaperService User-Agent, README badges/download/paths
+- [x] Removed stale files: src/WallPicker/MainWindow.xaml.cs.bak, WallpaperSuite-v0.2.0-win.zip
+- [x] Bug fix: WalldContext.ApplySettings now preserves picker-owned fields (Favorites, LastApplied, Collections, Excluded, DailyWallpaperLastDate) from the live _config instead of a stale disk load, so Settings save no longer clobbers newer in-memory state
+- [x] Bug fix: WalldContext.SyncPickerSettings now copies ActiveWallpaperTheme from disk so theme changes made via Settings/tray are picked up on next IPC/engine cycle
+- [x] Bug fix: WallPicker.App.ActivateExistingInstance uses title-independent process enumeration instead of FindWindow by exact title, since themes change the window title (e.g. "WallPicker - Skewed Accordion")
+- [x] dotnet build WallpaperSuite.sln -c Release -warnaserror = 0 errors / 0 warnings; dotnet test = all 51 tests passing

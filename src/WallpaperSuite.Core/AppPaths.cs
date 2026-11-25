@@ -19,8 +19,14 @@ public static class AppPaths
     /// <summary>
     /// Overrides the data directory (tests only). Pass null to restore the real
     /// %APPDATA%\WallpaperPicker location. Never called by the shipping apps.
+    /// Returns the previous override value.
     /// </summary>
-    public static void SetDataDirOverride(string? dir) => _dataDirOverride = string.IsNullOrWhiteSpace(dir) ? null : dir;
+    public static string? SetDataDirOverride(string? dir)
+    {
+        var previous = _dataDirOverride;
+        _dataDirOverride = string.IsNullOrWhiteSpace(dir) ? null : dir;
+        return previous;
+    }
 
     public static string ConfigFile => Path.Combine(DataDir, "config.json");
 

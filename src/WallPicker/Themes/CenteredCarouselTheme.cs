@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WallpaperSuite.Core;
@@ -15,18 +14,19 @@ using WallpaperSuite.Core.Themes;
 namespace WallPicker.Themes;
 
 /// <summary>
-/// Centered Carousel theme: prominent center slanted card with side preview cards
-/// and smooth animated reveal when a wallpaper is chosen.
+/// Centered Carousel theme: prominent 16:9 center card with smaller dimmed side preview
+/// cards, RenderTransform-only 60 FPS OutCubic VSync animation, dedicated bottom overlay,
+/// and ThumbCache-backed frozen images.
 /// </summary>
 public sealed class CenteredCarouselTheme : IWallpaperTheme
 {
     public string Id => "centered-carousel";
     public string DisplayName => "Centered Carousel";
-    public string Description => "Prominent center card with side previews and animated reveal.";
+    public string Description => "Prominent center card with smaller side previews and bottom keycap bar.";
 
     public event Action<string>? WallpaperSelected;
 
-    private Window? _window;
+    private CenteredCarouselWindow? _window;
 
     public void Show(AppConfig config, string folder, Action<string> onWallpaperSelected)
     {
@@ -35,8 +35,13 @@ public sealed class CenteredCarouselTheme : IWallpaperTheme
             onWallpaperSelected(path);
             WallpaperSelected?.Invoke(path);
         });
-        _window.Closed += (_, _) => Hide();
-        _window.Show();
+        _window.Closed += (_, _) =>
+        {
+            _window = null;
+            WallpaperSelected = null;
+        };
+        ThemeUiHelpers.ShowOnCursorMonitor(_window);
+        _window.Activate();
     }
 
     public void Hide()
@@ -47,30 +52,38 @@ public sealed class CenteredCarouselTheme : IWallpaperTheme
     }
 }
 
-/// <summary>
-/// Internal window for the Centered Carousel theme.
-/// </summary>
 internal sealed class CenteredCarouselWindow : Window
 {
+    private const int VisibleCards = 4;
+    private const double TransitionDurationMs = 220.0;
+
     private readonly AppConfig _config;
     private readonly string _folder;
     private readonly Action<string> _onSelected;
-    private readonly List<WallpaperItem> _allItems = new();
-    private readonly List<WallpaperItem> _items = new();
-    private readonly List<CarouselCard> _cards = new();
+    private readonly MetaStore _metaStore;
+    private readonly ThumbCache _thumbCache;
+    private readonly List<WallpaperItem> _allItems = [];
+    private readonly List<WallpaperItem> _items = [];
+    private readonly List<CarouselCard> _cards = [];
+
     private readonly Canvas _cardsCanvas;
-    private readonly DispatcherTimer _animationTimer;
-    private int _selectedIndex = 0;
-    private double _scrollPosition = 0;
-    private bool _animating = false;
-    private double _viewWidth;
-    private double _viewHeight;
-    private double _cardWidth;
-    private double _cardHeight;
-    private double _radius;
-    private const double StepDegrees = 8.0;
-    private const int VisibleCards = 5;
-    private readonly SolidColorBrush _accentBrush = new(Color.FromRgb(0x5B, 0x8C, 0xFF));
+    private TextBox _searchBox = null!;
+    private TextBlock _counterText = null!;
+    private TextBlock _activeTitleText = null!;
+    private TextBlock _activeMetaText = null!;
+    private StackPanel _activePaletteStrip = null!;
+
+    private int _selectedIndex;
+    private double _scrollPosition;
+    private double _animStartPosition;
+    private double _animTargetPosition;
+    private long _animStartTicks;
+    private bool _animating;
+    private bool _closed;
+    private double _viewWidth = 1280;
+    private double _viewHeight = 600;
+    private double _cardWidth = 640;
+    private double _cardHeight = 360;
 
     public CenteredCarouselWindow(AppConfig config, string folder, Action<string> onSelected)
     {
@@ -78,71 +91,76 @@ internal sealed class CenteredCarouselWindow : Window
         _folder = folder;
         _onSelected = onSelected;
 
+        _metaStore = new MetaStore();
+        _thumbCache = new ThumbCache(_metaStore, Dispatcher);
+        _thumbCache.ThumbCompleted += OnThumbCompleted;
+
         Title = "WallPicker - Centered Carousel";
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         Topmost = true;
-        Background = new SolidColorBrush(Color.FromRgb(0x0C, 0x0C, 0x10));
-        WindowState = WindowState.Maximized;
+        Background = ThemeUiHelpers.WindowBg;
         Focusable = true;
+
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewMouseWheel += OnPreviewMouseWheel;
 
         var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Top bar
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Carousel
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Bottom hints
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Content = root;
 
-        // Top bar with search
         var topBar = CreateTopBar();
         Grid.SetRow(topBar, 0);
         root.Children.Add(topBar);
 
-        // Carousel canvas
         _cardsCanvas = new Canvas
         {
-            ClipToBounds = false,
+            ClipToBounds = true,
             Background = Brushes.Transparent,
+        };
+        _cardsCanvas.SizeChanged += (_, _) =>
+        {
+            RecalcMetrics();
+            UpdateCardPositions();
         };
         Grid.SetRow(_cardsCanvas, 1);
         root.Children.Add(_cardsCanvas);
 
-        // Bottom hint bar
-        var hintBar = CreateHintBar();
-        Grid.SetRow(hintBar, 2);
-        root.Children.Add(hintBar);
-
-        // Animation timer for smooth scrolling
-        _animationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(16),
-        };
-        _animationTimer.Tick += OnAnimationTick;
+        var bottomOverlay = CreateBottomOverlay();
+        Grid.SetRow(bottomOverlay, 2);
+        root.Children.Add(bottomOverlay);
 
         Loaded += OnLoaded;
-        SizeChanged += OnSizeChanged;
+        Closed += (_, _) =>
+        {
+            _closed = true;
+            StopRenderLoop();
+            _thumbCache.ThumbCompleted -= OnThumbCompleted;
+            _thumbCache.Dispose();
+        };
     }
 
     private Border CreateTopBar()
     {
         var bar = new Border
         {
-            Height = 64,
-            Margin = new Thickness(24, 24, 24, 0),
+            Height = 56,
+            Margin = new Thickness(24, 24, 24, 8),
             HorizontalAlignment = HorizontalAlignment.Center,
-            Background = new SolidColorBrush(Color.FromArgb(0xEB, 0x1E, 0x1E, 0x22)),
-            CornerRadius = new CornerRadius(16),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0xAA, 0x5B, 0x8C, 0xFF)),
+            Background = ThemeUiHelpers.SurfaceBg,
+            CornerRadius = new CornerRadius(14),
+            BorderBrush = ThemeUiHelpers.AccentBorderBrush,
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(24, 0, 24, 0),
+            Padding = new Thickness(20, 0, 20, 0),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
-                BlurRadius = 24,
-                ShadowDepth = 6,
-                Opacity = 0.5,
+                BlurRadius = 20,
+                ShadowDepth = 4,
+                Opacity = 0.45,
             },
         };
 
@@ -154,144 +172,127 @@ internal sealed class CenteredCarouselWindow : Window
         var titleText = new TextBlock
         {
             Text = "Centered Carousel",
-            Foreground = Brushes.White,
-            FontFamily = new FontFamily("Segoe UI, Arial"),
-            FontSize = 18,
+            Foreground = ThemeUiHelpers.TextPrimary,
+            FontFamily = ThemeUiHelpers.UiFont,
+            FontSize = 15,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 24, 0),
+            Margin = new Thickness(0, 0, 18, 0),
         };
         Grid.SetColumn(titleText, 0);
         grid.Children.Add(titleText);
 
-        var searchBox = new TextBox
+        _searchBox = new TextBox
         {
-            Width = 400,
+            Width = 340,
             Height = 36,
             VerticalAlignment = VerticalAlignment.Center,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground = new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xEE)),
-            CaretBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xEE)),
-            FontFamily = new FontFamily("Segoe UI, Arial"),
-            FontSize = 15,
+            Foreground = ThemeUiHelpers.TextPrimary,
+            CaretBrush = ThemeUiHelpers.TextPrimary,
+            FontFamily = ThemeUiHelpers.UiFont,
+            FontSize = 14.5,
             VerticalContentAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(16, 0, 16, 0),
+            Padding = new Thickness(10, 0, 10, 0),
         };
-        searchBox.TextChanged += (_, _) => ApplySearchFilter(searchBox.Text);
-        Grid.SetColumn(searchBox, 1);
-        grid.Children.Add(searchBox);
+        _searchBox.TextChanged += (_, _) => ApplySearchFilter(_searchBox.Text);
+        Grid.SetColumn(_searchBox, 1);
+        grid.Children.Add(_searchBox);
 
-        var searchPlaceholder = new TextBlock
+        var placeholder = new TextBlock
         {
-            Text = "Search...",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x7A, 0x88)),
-            FontFamily = new FontFamily("Segoe UI, Arial"),
-            FontSize = 15,
+            Text = "Search wallpapers... (/)",
+            Foreground = ThemeUiHelpers.TextMuted,
+            FontFamily = ThemeUiHelpers.UiFont,
+            FontSize = 14.5,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(16, 0, 0, 0),
+            Margin = new Thickness(10, 0, 0, 0),
             IsHitTestVisible = false,
         };
-        Grid.SetColumn(searchPlaceholder, 1);
-        grid.Children.Add(searchPlaceholder);
-        searchBox.GotFocus += (_, _) => searchPlaceholder.Visibility = Visibility.Collapsed;
-        searchBox.LostFocus += (_, _) => searchPlaceholder.Visibility = string.IsNullOrEmpty(searchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetColumn(placeholder, 1);
+        grid.Children.Add(placeholder);
+        _searchBox.GotFocus += (_, _) => placeholder.Visibility = Visibility.Collapsed;
+        _searchBox.LostFocus += (_, _) => placeholder.Visibility = string.IsNullOrEmpty(_searchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
 
-        var countText = new TextBlock
+        _counterText = new TextBlock
         {
-            Text = "0 wallpapers",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xB4)),
-            FontFamily = new FontFamily("JetBrains Mono, Cascadia Mono, Consolas"),
-            FontSize = 13,
+            Text = "Loading...",
+            Foreground = ThemeUiHelpers.TextSecondary,
+            FontFamily = ThemeUiHelpers.MonoFont,
+            FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(24, 0, 0, 0),
+            Margin = new Thickness(18, 0, 0, 0),
         };
-        Grid.SetColumn(countText, 2);
-        grid.Children.Add(countText);
+        Grid.SetColumn(_counterText, 2);
+        grid.Children.Add(_counterText);
 
         bar.Child = grid;
         return bar;
     }
 
-    private Border CreateHintBar()
+    private StackPanel CreateBottomOverlay()
     {
-        var bar = new Border
+        var stack = new StackPanel
         {
-            Height = 48,
-            Margin = new Thickness(24, 0, 24, 24),
+            Orientation = Orientation.Vertical,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Background = new SolidColorBrush(Color.FromArgb(0x8C, 0x16, 0x16, 0x1C)),
-            CornerRadius = new CornerRadius(12),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(20, 0, 20, 0),
+            Margin = new Thickness(0, 8, 0, 0),
         };
 
-        var panel = new StackPanel
+        var infoRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(24, 4, 24, 6),
         };
 
-        var hints = new[] { ("← →", "Navigate"), ("↵", "Select"), ("/", "Search"), ("Esc", "Close") };
-        var monoFont = new FontFamily("Cascadia Mono, Consolas, Segoe UI Symbol");
-        var uiFont = new FontFamily("Segoe UI, Arial");
-
-        foreach (var (key, label) in hints)
+        _activeTitleText = new TextBlock
         {
-            var item = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 20, 0), VerticalAlignment = VerticalAlignment.Center };
+            Foreground = ThemeUiHelpers.TextPrimary,
+            FontFamily = ThemeUiHelpers.UiFont,
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 540,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        infoRow.Children.Add(_activeTitleText);
 
-            var cap = new Border
-            {
-                MinWidth = 28,
-                Height = 24,
-                CornerRadius = new CornerRadius(5),
-                Background = new SolidColorBrush(Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x48, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1, 1, 1, 2),
-                Padding = new Thickness(8, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = key,
-                    FontFamily = key == "↵" ? uiFont : monoFont,
-                    FontSize = 11.5,
-                    Foreground = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                },
-            };
-            item.Children.Add(cap);
+        _activeMetaText = new TextBlock
+        {
+            Foreground = ThemeUiHelpers.TextSecondary,
+            FontFamily = ThemeUiHelpers.MonoFont,
+            FontSize = 12,
+            Margin = new Thickness(14, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        infoRow.Children.Add(_activeMetaText);
 
-            var text = new TextBlock
-            {
-                Text = label,
-                FontFamily = uiFont,
-                FontSize = 12,
-                Foreground = new SolidColorBrush(Color.FromArgb(0x9C, 0xFF, 0xFF, 0xFF)),
-                Margin = new Thickness(6, 0, 0, 1),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            item.Children.Add(text);
+        _activePaletteStrip = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(14, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+        };
+        infoRow.Children.Add(_activePaletteStrip);
 
-            panel.Children.Add(item);
-        }
-
-        bar.Child = panel;
-        return bar;
+        stack.Children.Add(infoRow);
+        stack.Children.Add(ThemeUiHelpers.CreateHintBar(
+            ("← →", "navigate"),
+            ("↵", "select"),
+            ("/", "search"),
+            ("Esc", "close")));
+        return stack;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        RecalcMetrics();
         LoadWallpapers();
         Focus();
         Keyboard.Focus(this);
-    }
-
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        RecalcMetrics();
-        UpdateCardPositions();
     }
 
     private async void LoadWallpapers()
@@ -299,13 +300,27 @@ internal sealed class CenteredCarouselWindow : Window
         try
         {
             var items = await ImageScanner.ScanAsync(GetScanFolders());
+            if (_closed) return;
+
             _allItems.Clear();
             _allItems.AddRange(items);
             _items.Clear();
             _items.AddRange(_allItems);
+
+            _selectedIndex = 0;
+            if (!string.IsNullOrWhiteSpace(_config.LastApplied))
+            {
+                int found = _items.FindIndex(i => string.Equals(i.Path, _config.LastApplied, StringComparison.OrdinalIgnoreCase));
+                if (found >= 0) _selectedIndex = found;
+            }
+            _scrollPosition = _selectedIndex;
+
             CreateCardPool();
+            RecalcMetrics();
             UpdateCardPositions();
             UpdateCounter();
+            UpdateBottomInfo();
+            _thumbCache.RequestAround(_items, _selectedIndex, radius: 6);
         }
         catch (Exception ex)
         {
@@ -313,16 +328,30 @@ internal sealed class CenteredCarouselWindow : Window
         }
     }
 
-    private IEnumerable<string> GetScanFolders() => WallpaperSources.GetLibraryFolders(_config);
+    private IEnumerable<string> GetScanFolders()
+    {
+        var folders = WallpaperSources.GetLibraryFolders(_config);
+        if (!string.IsNullOrWhiteSpace(_folder) && !folders.Contains(_folder, StringComparer.OrdinalIgnoreCase))
+        {
+            folders.Insert(0, _folder);
+        }
+        return folders;
+    }
 
     private void RecalcMetrics()
     {
-        _viewWidth = Math.Max(ActualWidth, 800);
-        _viewHeight = Math.Max(ActualHeight, 600);
+        _viewWidth = Math.Max(_cardsCanvas.ActualWidth > 0 ? _cardsCanvas.ActualWidth : ActualWidth, 800);
+        _viewHeight = Math.Max(_cardsCanvas.ActualHeight > 0 ? _cardsCanvas.ActualHeight : ActualHeight - 200, 360);
 
-        _cardWidth = Math.Min(_viewWidth * 0.35, _viewHeight * 0.55);
-        _cardHeight = _cardWidth * 16.0 / 9.0 + 80; // 16:9 + footer
-        _radius = _viewWidth * 0.6;
+        double maxH = Math.Clamp(_viewHeight * 0.72, 240, 560);
+        double maxW = Math.Clamp(_viewWidth * 0.46, 400, 960);
+        _cardHeight = Math.Min(maxH, maxW * 9.0 / 16.0);
+        _cardWidth = _cardHeight * 16.0 / 9.0;
+
+        foreach (var card in _cards)
+        {
+            card.SetDimensions(_cardWidth, _cardHeight);
+        }
     }
 
     private void CreateCardPool()
@@ -333,7 +362,9 @@ internal sealed class CenteredCarouselWindow : Window
         int poolSize = VisibleCards * 2 + 1;
         for (int i = 0; i < poolSize; i++)
         {
-            var card = new CarouselCard(_cardWidth, _cardHeight, _accentBrush);
+            var card = new CarouselCard(_cardWidth, _cardHeight);
+            Canvas.SetLeft(card, 0);
+            Canvas.SetTop(card, 0);
             card.Clicked += OnCardClicked;
             _cardsCanvas.Children.Add(card);
             _cards.Add(card);
@@ -342,10 +373,17 @@ internal sealed class CenteredCarouselWindow : Window
 
     private void UpdateCardPositions()
     {
-        if (_items.Count == 0) return;
+        if (_items.Count == 0 || _cards.Count == 0)
+        {
+            foreach (var c in _cards)
+            {
+                c.Visibility = Visibility.Collapsed;
+            }
+            return;
+        }
 
         int count = _items.Count;
-        int center = (int)Math.Round(_scrollPosition);
+        int center = Math.Clamp((int)Math.Round(_scrollPosition), 0, count - 1);
         int first = Math.Max(0, center - VisibleCards);
         int last = Math.Min(count - 1, center + VisibleCards);
 
@@ -354,27 +392,55 @@ internal sealed class CenteredCarouselWindow : Window
         {
             double distance = i - _scrollPosition;
             double absDistance = Math.Abs(distance);
-            double near = Math.Max(0.0, 1.0 - absDistance / (VisibleCards + 1));
-            double theta = distance * StepDegrees * Math.PI / 180.0;
 
-            double cx = _viewWidth / 2.0 + _radius * Math.Sin(theta);
-            double cy = _viewHeight / 2.0 + 0.7 * _radius * (1.0 - Math.Cos(theta)) - 40.0 * near;
-            double scale = 0.75 - 0.015 * Math.Max(0.0, absDistance - 1.0) + 0.40 * near;
-            double rotation = distance * StepDegrees * 0.5; // Subtle rotation for side cards
+            double scale = Math.Max(0.54, 1.0 - absDistance * 0.16);
+            double spacing = _cardWidth * 0.62;
+            double cx = _viewWidth * 0.5 + distance * spacing;
+            double cy = _viewHeight * 0.5 + Math.Min(28.0, absDistance * 8.0);
+            double rotation = Math.Clamp(distance * 3.5, -14.0, 14.0);
 
-            double opacity = 1.0 - Math.Clamp((absDistance - 2.0) / 3.0, 0.0, 1.0);
-            opacity = opacity * opacity * (3.0 - 2.0 * opacity);
-
+            double opacity = Math.Clamp(1.0 - absDistance * 0.24, 0.0, 1.0);
             int zIndex = 1000 - (int)Math.Round(absDistance * 100.0);
 
+            WallpaperItem item = _items[i];
             var card = _cards[used++];
             bool isSelected = i == _selectedIndex;
-            card.UpdateCard(_items[i], cx, cy, rotation, scale, near, zIndex, opacity, isSelected);
+
+            BitmapSource? ramThumb = null;
+            if (!card.HasThumbnail || !string.Equals(card.BoundKey, item.Key, StringComparison.Ordinal))
+            {
+                _thumbCache.TryGetRamThumb(item.Key, out ramThumb);
+            }
+            card.UpdateCard(item, cx, cy, rotation, scale, isSelected, zIndex, opacity, ramThumb);
         }
 
         for (int i = used; i < _cards.Count; i++)
         {
             _cards[i].Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnThumbCompleted(string key, BitmapSource? bmp, ThumbMeta? meta, bool skipped)
+    {
+        if (_closed || skipped)
+        {
+            return;
+        }
+
+        if (bmp is not null)
+        {
+            foreach (var card in _cards)
+            {
+                if (card.Visibility == Visibility.Visible && string.Equals(card.BoundKey, key, StringComparison.Ordinal))
+                {
+                    card.SetThumbnail(bmp);
+                }
+            }
+        }
+
+        if (_items.Count > 0 && _selectedIndex < _items.Count && string.Equals(_items[_selectedIndex].Key, key, StringComparison.Ordinal))
+        {
+            UpdateBottomInfo();
         }
     }
 
@@ -393,13 +459,45 @@ internal sealed class CenteredCarouselWindow : Window
 
         _selectedIndex = 0;
         _scrollPosition = 0;
+        StopRenderLoop();
+
         UpdateCardPositions();
         UpdateCounter();
+        UpdateBottomInfo();
+        if (_items.Count > 0)
+        {
+            _thumbCache.RequestAround(_items, 0, radius: 6);
+        }
     }
 
     private void UpdateCounter()
     {
-        // Could update the top bar count text here
+        _counterText.Text = $"{_items.Count} wallpaper{(_items.Count != 1 ? "s" : "")}";
+    }
+
+    private void UpdateBottomInfo()
+    {
+        if (_items.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _items.Count)
+        {
+            _activeTitleText.Text = _allItems.Count == 0 ? "No wallpapers found" : "No matches";
+            _activeMetaText.Text = "";
+            _activePaletteStrip.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        WallpaperItem item = _items[_selectedIndex];
+        _activeTitleText.Text = item.Title;
+        if (_metaStore.TryGet(item.Key, out ThumbMeta? meta) && meta is not null)
+        {
+            string res = meta.W > 0 && meta.H > 0 ? $"{meta.W}x{meta.H} • " : "";
+            _activeMetaText.Text = $"{res}{item.FormatLabel} • {WallpaperItem.FormatSize(item.Size)}";
+            ThemeUiHelpers.PopulatePalette(_activePaletteStrip, meta.Pal, size: 15, radius: 4);
+        }
+        else
+        {
+            _activeMetaText.Text = $"{item.FormatLabel} • {WallpaperItem.FormatSize(item.Size)}";
+            _activePaletteStrip.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void OnCardClicked(WallpaperItem item)
@@ -408,57 +506,99 @@ internal sealed class CenteredCarouselWindow : Window
         Close();
     }
 
-    private void AnimateToIndex(int targetIndex)
+    private void MoveSelection(int delta)
     {
-        if (_animating) return;
-        _animating = true;
-        _animationTimer.Start();
+        if (_items.Count == 0) return;
+        _selectedIndex = Math.Clamp(_selectedIndex + delta, 0, _items.Count - 1);
+        UpdateBottomInfo();
+        _thumbCache.RequestAround(_items, _selectedIndex, radius: 6);
+
+        _animStartPosition = _scrollPosition;
+        _animTargetPosition = _selectedIndex;
+        _animStartTicks = Stopwatch.GetTimestamp();
+
+        if (!_animating)
+        {
+            _animating = true;
+            CompositionTarget.Rendering += OnCompositionRendering;
+        }
     }
 
-    private void OnAnimationTick(object? sender, EventArgs e)
+    private void StopRenderLoop()
     {
-        double target = _selectedIndex;
-        double diff = target - _scrollPosition;
-
-        if (Math.Abs(diff) < 0.02)
+        if (_animating)
         {
-            _scrollPosition = target;
             _animating = false;
-            _animationTimer.Stop();
+            CompositionTarget.Rendering -= OnCompositionRendering;
         }
-        else
+    }
+
+    private void OnCompositionRendering(object? sender, EventArgs e)
+    {
+        if (_closed || !_animating)
         {
-            _scrollPosition += diff * 0.15; // Smooth easing
+            StopRenderLoop();
+            return;
         }
 
+        double elapsedMs = (Stopwatch.GetTimestamp() - _animStartTicks) * 1000.0 / Stopwatch.Frequency;
+        double t = Math.Clamp(elapsedMs / TransitionDurationMs, 0.0, 1.0);
+        double eased = 1.0 - Math.Pow(1.0 - t, 3.0); // OutCubic
+
+        _scrollPosition = _animStartPosition + (_animTargetPosition - _animStartPosition) * eased;
         UpdateCardPositions();
+
+        if (t >= 1.0)
+        {
+            _scrollPosition = _animTargetPosition;
+            UpdateCardPositions();
+            StopRenderLoop();
+        }
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_items.Count == 0) return;
+        if (e.Key == Key.Escape)
+        {
+            if (_searchBox.IsKeyboardFocusWithin && !string.IsNullOrEmpty(_searchBox.Text))
+            {
+                _searchBox.Text = "";
+                Focus();
+                Keyboard.Focus(this);
+            }
+            else
+            {
+                Close();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (_searchBox.IsKeyboardFocusWithin)
+        {
+            if (e.Key == Key.Enter)
+            {
+                Focus();
+                Keyboard.Focus(this);
+                e.Handled = true;
+            }
+            return;
+        }
 
         switch (e.Key)
         {
-            case Key.Escape:
-                Close();
-                e.Handled = true;
-                break;
-
             case Key.Left:
-                _selectedIndex = Math.Max(0, _selectedIndex - 1);
-                AnimateToIndex(_selectedIndex);
+                MoveSelection(-1);
                 e.Handled = true;
                 break;
 
             case Key.Right:
-                _selectedIndex = Math.Min(_items.Count - 1, _selectedIndex + 1);
-                AnimateToIndex(_selectedIndex);
+                MoveSelection(1);
                 e.Handled = true;
                 break;
 
             case Key.Enter:
-                if (_selectedIndex >= 0 && _selectedIndex < _items.Count)
+                if (_items.Count > 0 && _selectedIndex >= 0 && _selectedIndex < _items.Count)
                 {
                     OnCardClicked(_items[_selectedIndex]);
                 }
@@ -467,7 +607,8 @@ internal sealed class CenteredCarouselWindow : Window
 
             case Key.OemQuestion:
             case Key.Divide:
-                // Focus search - would need reference to search box
+                _searchBox.Focus();
+                _searchBox.SelectAll();
                 e.Handled = true;
                 break;
         }
@@ -476,31 +617,28 @@ internal sealed class CenteredCarouselWindow : Window
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (_items.Count == 0) return;
-
-        int direction = e.Delta < 0 ? 1 : -1;
-        _selectedIndex = Math.Clamp(_selectedIndex + direction, 0, _items.Count - 1);
-        AnimateToIndex(_selectedIndex);
+        MoveSelection(e.Delta < 0 ? 1 : -1);
         e.Handled = true;
     }
 }
 
-/// <summary>
-/// Individual carousel card for the Centered Carousel theme.
-/// </summary>
 internal sealed class CarouselCard : Border
 {
-    private readonly double _baseWidth;
-    private readonly double _baseHeight;
+    private double _baseWidth;
+    private double _baseHeight;
     private readonly Image _image;
-    private readonly TextBlock _titleText;
-    private readonly TextBlock _metaText;
-    private readonly StackPanel _paletteStrip;
     private readonly Border _glowBorder;
+    private readonly ScaleTransform _scaleTransform = new(1, 1);
+    private readonly RotateTransform _rotateTransform = new(0);
+    private readonly TranslateTransform _translateTransform = new(0, 0);
     private WallpaperItem? _boundItem;
+
+    public string? BoundKey => _boundItem?.Key;
+    public bool HasThumbnail => _image.Source is not null;
 
     public event Action<WallpaperItem>? Clicked;
 
-    public CarouselCard(double baseWidth, double baseHeight, Brush accentBrush)
+    public CarouselCard(double baseWidth, double baseHeight)
     {
         _baseWidth = baseWidth;
         _baseHeight = baseHeight;
@@ -508,80 +646,45 @@ internal sealed class CarouselCard : Border
         Width = baseWidth;
         Height = baseHeight;
         CornerRadius = new CornerRadius(16);
-        Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x1C));
-        BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+        Background = ThemeUiHelpers.CardBg;
+        BorderBrush = ThemeUiHelpers.SubtleBorderBrush;
         BorderThickness = new Thickness(1);
         RenderTransformOrigin = new Point(0.5, 0.5);
         Cursor = Cursors.Hand;
-        ClipToBounds = true;
+        CacheMode = new BitmapCache();
 
-        // Glow border for selected card
-        _glowBorder = new Border
-        {
-            CornerRadius = new CornerRadius(18),
-            BorderBrush = accentBrush,
-            BorderThickness = new Thickness(3),
-            Background = Brushes.Transparent,
-            IsHitTestVisible = false,
-            Opacity = 0,
-            Margin = new Thickness(-4),
-        };
+        var group = new TransformGroup();
+        group.Children.Add(_scaleTransform);
+        group.Children.Add(_rotateTransform);
+        group.Children.Add(_translateTransform);
+        RenderTransform = group;
 
         var grid = new Grid();
-        grid.Children.Add(_glowBorder);
 
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        // Image
         _image = new Image
         {
             Stretch = Stretch.UniformToFill,
         };
         RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
+
         var imgBorder = new Border
         {
-            CornerRadius = new CornerRadius(14, 14, 0, 0),
+            CornerRadius = new CornerRadius(15),
             ClipToBounds = true,
             Child = _image,
         };
-        Grid.SetRow(imgBorder, 0);
         grid.Children.Add(imgBorder);
 
-        // Footer
-        var footer = new StackPanel
+        _glowBorder = new Border
         {
-            Orientation = Orientation.Vertical,
-            Margin = new Thickness(14, 10, 14, 14),
+            CornerRadius = new CornerRadius(16),
+            BorderBrush = ThemeUiHelpers.AccentBrush,
+            BorderThickness = new Thickness(2.5),
+            Background = Brushes.Transparent,
+            IsHitTestVisible = false,
+            Opacity = 0,
         };
-        Grid.SetRow(footer, 1);
-        grid.Children.Add(footer);
-
-        _titleText = new TextBlock
-        {
-            Foreground = Brushes.White,
-            FontFamily = new FontFamily("Segoe UI, Arial"),
-            FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-        footer.Children.Add(_titleText);
-
-        _metaText = new TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xB4)),
-            FontFamily = new FontFamily("JetBrains Mono, Cascadia Mono, Consolas"),
-            FontSize = 11,
-            Margin = new Thickness(0, 4, 0, 8),
-        };
-        footer.Children.Add(_metaText);
-
-        _paletteStrip = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Height = 28,
-        };
-        footer.Children.Add(_paletteStrip);
+        grid.Children.Add(_glowBorder);
 
         Child = grid;
 
@@ -592,93 +695,53 @@ internal sealed class CarouselCard : Border
                 Clicked?.Invoke(_boundItem);
             }
         };
-
-        MouseEnter += (_, _) => AnimateHover(true);
-        MouseLeave += (_, _) => AnimateHover(false);
     }
 
-    public void UpdateCard(WallpaperItem item, double cx, double cy, double rotation, double scale, double near, int zIndex, double opacity, bool isSelected)
+    public void SetDimensions(double width, double height)
     {
-        _boundItem = item;
-        Visibility = opacity > 0.01 ? Visibility.Visible : Visibility.Collapsed;
+        _baseWidth = width;
+        _baseHeight = height;
+        Width = width;
+        Height = height;
+    }
 
-        Canvas.SetLeft(this, cx - _baseWidth / 2.0);
-        Canvas.SetTop(this, cy - _baseHeight / 2.0);
+    public void SetThumbnail(BitmapSource bmp)
+    {
+        _image.Source = bmp;
+    }
+
+    public void UpdateCard(
+        WallpaperItem item,
+        double cx,
+        double cy,
+        double rotation,
+        double scale,
+        bool isSelected,
+        int zIndex,
+        double opacity,
+        BitmapSource? cachedThumb)
+    {
+        bool itemChanged = !string.Equals(_boundItem?.Key, item.Key, StringComparison.Ordinal);
+        _boundItem = item;
+
+        Visibility = opacity > 0.02 ? Visibility.Visible : Visibility.Collapsed;
+        _translateTransform.X = cx - _baseWidth * 0.5;
+        _translateTransform.Y = cy - _baseHeight * 0.5;
         Panel.SetZIndex(this, zIndex);
         Opacity = opacity;
 
-        var transformGroup = new TransformGroup();
-        transformGroup.Children.Add(new TranslateTransform(-_baseWidth / 2.0, -_baseHeight / 2.0));
-        transformGroup.Children.Add(new ScaleTransform(scale, scale));
-        transformGroup.Children.Add(new RotateTransform(rotation));
-        transformGroup.Children.Add(new TranslateTransform(_baseWidth / 2.0, _baseHeight / 2.0));
-        RenderTransform = transformGroup;
+        _scaleTransform.ScaleX = scale;
+        _scaleTransform.ScaleY = scale;
+        _rotateTransform.Angle = rotation;
+        _glowBorder.Opacity = isSelected ? 1.0 : 0.0;
 
-        _titleText.Text = item.Title;
-        _metaText.Text = $"{item.FormatLabel} • {WallpaperItem.FormatSize(item.Size)}";
-
-        _glowBorder.Opacity = isSelected ? near : 0;
-
-        // Load thumbnail
-        LoadThumbnailAsync(item);
-
-        // Placeholder palette
-        _paletteStrip.Children.Clear();
-        for (int i = 0; i < 5; i++)
+        if (cachedThumb is not null)
         {
-            var swatch = new Border
-            {
-                Width = 28,
-                Height = 28,
-                Margin = new Thickness(0, 0, 4, 0),
-                CornerRadius = new CornerRadius(6),
-                Background = new SolidColorBrush(Color.FromRgb(0x30, 0x30, 0x36)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1),
-            };
-            _paletteStrip.Children.Add(swatch);
+            _image.Source = cachedThumb;
         }
-    }
-
-    private async void LoadThumbnailAsync(WallpaperItem item)
-    {
-        try
+        else if (itemChanged)
         {
-            var thumb = await Task.Run(() =>
-            {
-                using var stream = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = 500;
-                bitmap.StreamSource = stream;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                return bitmap;
-            });
-
-            _image.Dispatcher.Invoke(() => _image.Source = thumb);
-        }
-        catch { }
-    }
-
-    private void AnimateHover(bool isHover)
-    {
-        var scaleAnim = new DoubleAnimation(isHover ? 1.03 : 1.0, TimeSpan.FromMilliseconds(isHover ? 150 : 200))
-        {
-            EasingFunction = isHover
-                ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.2 }
-                : new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
-
-        var currentTransform = RenderTransform as TransformGroup;
-        if (currentTransform is not null && currentTransform.Children.Count >= 2)
-        {
-            if (currentTransform.Children[1] is ScaleTransform scaleTransform)
-            {
-                scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
-                scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
-            }
+            _image.Source = null;
         }
     }
 }

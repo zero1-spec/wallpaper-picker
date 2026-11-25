@@ -26,45 +26,72 @@ public partial class App : System.Windows.Application
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        _instanceMutex = new Mutex(initiallyOwned: true, MutexName, out _ownsMutex);
-        if (!_ownsMutex)
+        try
         {
-            ActivateExistingInstance();
-            _instanceMutex.Dispose();
-            _instanceMutex = null;
-            Shutdown(0);
-            return;
+            _instanceMutex = new Mutex(initiallyOwned: true, MutexName, out _ownsMutex);
+            if (!_ownsMutex)
+            {
+                ActivateExistingInstance();
+                _instanceMutex.Dispose();
+                _instanceMutex = null;
+                Shutdown(0);
+                return;
+            }
+
+            var configStore = new JsonStore<AppConfig>(AppPaths.ConfigFile);
+
+            // Register built-in themes
+            ThemeRegistry.Register(new ArcCarouselTheme(configStore));
+            ThemeRegistry.Register(new SkewedAccordionTheme());
+            ThemeRegistry.Register(new CenteredCarouselTheme());
+            ThemeRegistry.Register(new ClassicGridTheme());
+
+            AppConfig config = configStore.Load();
+            config.EnsureDefaults();
+
+            // Parse --theme <id> / --theme=<id> and optional folder path without confusing flags for folders.
+            (string? themeId, string? folderArg) = ParseArgs(e.Args);
+            if (!string.IsNullOrWhiteSpace(themeId))
+            {
+                config.ActiveWallpaperTheme = ThemeRegistry.ValidateOrDefault(themeId);
+                configStore.Save(config);
+            }
+
+            string? folder = ResolveInitialFolder(folderArg, config, configStore);
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                Shutdown(0);
+                return;
+            }
+
+            string activeThemeId = ThemeRegistry.ValidateOrDefault(config.ActiveWallpaperTheme);
+            if (string.Equals(activeThemeId, ThemeRegistry.DefaultThemeId, StringComparison.OrdinalIgnoreCase))
+            {
+                var window = new MainWindow(configStore, config, folder);
+                MainWindow = window;
+                window.ShowOnCursorMonitor();
+                return;
+            }
+
+            IWallpaperTheme? theme = ThemeRegistry.Get(activeThemeId);
+            if (theme is not null)
+            {
+                ShutdownMode = ShutdownMode.OnLastWindowClose;
+                theme.Show(config, folder, selectedPath => ApplySelectedWallpaper(configStore, config, selectedPath));
+                return;
+            }
+
+            var fallbackWindow = new MainWindow(configStore, config, folder);
+            MainWindow = fallbackWindow;
+            fallbackWindow.ShowOnCursorMonitor();
         }
-
-        // Register built-in themes
-        ThemeRegistry.Register(new SkewedAccordionTheme());
-        ThemeRegistry.Register(new CenteredCarouselTheme());
-        ThemeRegistry.Register(new ClassicGridTheme());
-
-        var configStore = new JsonStore<AppConfig>(AppPaths.ConfigFile);
-        AppConfig config = configStore.Load();
-        config.EnsureDefaults();
-
-        // Parse --theme argument
-        string? themeArg = e.Args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(themeArg))
+        catch (Exception ex)
         {
-            string themeId = themeArg["--theme=".Length..].Trim();
-            config.ActiveWallpaperTheme = ThemeRegistry.ValidateOrDefault(themeId);
-            configStore.Save(config);
+            LogCrash("WallPicker startup exception", ex);
+            Shutdown(1);
         }
-
-        string? folder = ResolveInitialFolder(e.Args.Where(a => !a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase)).ToArray(), config, configStore);
-        if (string.IsNullOrWhiteSpace(folder))
-        {
-            Shutdown(0);
-            return;
-        }
-
-        var window = new MainWindow(configStore, config, folder);
-        MainWindow = window;
-        window.ShowOnCursorMonitor();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -90,9 +117,62 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    private static string? ResolveInitialFolder(string[] args, AppConfig config, JsonStore<AppConfig> configStore)
+    private static (string? ThemeId, string? FolderArg) ParseArgs(string[] args)
     {
-        string? argFolder = args.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a) && !a.StartsWith("--", StringComparison.Ordinal));
+        string? themeId = null;
+        string? folderArg = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i];
+            if (string.IsNullOrWhiteSpace(arg))
+            {
+                continue;
+            }
+
+            if (string.Equals(arg, "--theme", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length && !string.IsNullOrWhiteSpace(args[i + 1]))
+                {
+                    themeId = args[++i].Trim();
+                }
+            }
+            else if (arg.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase))
+            {
+                themeId = arg["--theme=".Length..].Trim();
+            }
+            else if (!arg.StartsWith("--", StringComparison.Ordinal) && folderArg is null)
+            {
+                folderArg = arg;
+            }
+        }
+
+        return (themeId, folderArg);
+    }
+
+    private static void ApplySelectedWallpaper(JsonStore<AppConfig> configStore, AppConfig config, string selectedPath)
+    {
+        if (string.IsNullOrWhiteSpace(selectedPath) || !File.Exists(selectedPath))
+        {
+            SimpleLogger.Warn($"WallPicker selected missing wallpaper '{selectedPath}'");
+            return;
+        }
+
+        string? cacheKey = WallpaperLibrary.TryComputeKey(selectedPath);
+        if (WallpaperApplier.Apply(selectedPath, config.FitMode, cacheKey, out string? error))
+        {
+            config.LastApplied = selectedPath;
+            configStore.Save(config);
+            WallpaperEffects.AfterApply(config, selectedPath);
+        }
+        else
+        {
+            SimpleLogger.Warn($"WallPicker failed to apply '{selectedPath}': {error}");
+        }
+    }
+
+    private static string? ResolveInitialFolder(string? argFolder, AppConfig config, JsonStore<AppConfig> configStore)
+    {
         if (!string.IsNullOrWhiteSpace(argFolder) && Directory.Exists(argFolder))
         {
             config.RootFolder = argFolder;
@@ -133,20 +213,13 @@ public partial class App : System.Windows.Application
     private static void ActivateExistingInstance()
     {
         IntPtr hwnd = IntPtr.Zero;
+        using Process current = Process.GetCurrentProcess();
 
         // The first instance may still be creating its window; give it a moment.
+        // Use process enumeration (title-independent) because themes change the
+        // window title, so FindWindow by exact title is unreliable.
         for (int attempt = 0; attempt < 20 && hwnd == IntPtr.Zero; attempt++)
         {
-            hwnd = NativeMethods.FindWindow(null, PickerWindowTitle);
-            if (hwnd == IntPtr.Zero)
-            {
-                Thread.Sleep(50);
-            }
-        }
-
-        if (hwnd == IntPtr.Zero)
-        {
-            using Process current = Process.GetCurrentProcess();
             foreach (Process proc in Process.GetProcessesByName(current.ProcessName))
             {
                 using (proc)
@@ -157,6 +230,11 @@ public partial class App : System.Windows.Application
                         break;
                     }
                 }
+            }
+
+            if (hwnd == IntPtr.Zero)
+            {
+                Thread.Sleep(50);
             }
         }
 
@@ -204,13 +282,45 @@ public partial class App : System.Windows.Application
         }
     }
 
+    private static readonly object CrashLogLock = new();
+
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        SimpleLogger.Error("WallPicker unhandled UI exception", e.Exception);
+        LogCrash("WallPicker unhandled UI exception", e.Exception);
     }
 
     private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
-        SimpleLogger.Error("WallPicker unhandled domain exception", e.ExceptionObject as Exception);
+        LogCrash("WallPicker unhandled domain exception", e.ExceptionObject as Exception);
+    }
+
+    private static void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+    {
+        LogCrash("WallPicker unobserved task exception", e.Exception);
+        e.SetObserved();
+    }
+
+    private static void LogCrash(string context, Exception? exception)
+    {
+        SimpleLogger.Error(context, exception);
+
+        lock (CrashLogLock)
+        {
+            try
+            {
+                Directory.CreateDirectory(AppPaths.LogsDir);
+                string logPath = Path.Combine(AppPaths.LogsDir, "wallpicker.log");
+                string details = exception is null
+                    ? context
+                    : $"{context}{Environment.NewLine}{exception}";
+                File.AppendAllText(
+                    logPath,
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [ERROR] {details}{Environment.NewLine}");
+            }
+            catch
+            {
+                // Logging must never throw inside a crash handler.
+            }
+        }
     }
 }

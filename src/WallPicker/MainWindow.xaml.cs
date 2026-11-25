@@ -147,12 +147,11 @@ public partial class MainWindow : Window
         // Window icon from the embedded ApplicationIcon in the exe.
         try
         {
-            var assembly = System.Reflection.Assembly.GetEntryAssembly();
-            if (assembly is null)
+            var exeLocation = Environment.ProcessPath ?? System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            if (string.IsNullOrEmpty(exeLocation))
             {
-                throw new InvalidOperationException("No entry assembly");
+                throw new InvalidOperationException("No entry executable path");
             }
-            var exeLocation = assembly.Location;
             using var exeIcon = System.Drawing.Icon.ExtractAssociatedIcon(exeLocation);
             if (exeIcon is null)
             {

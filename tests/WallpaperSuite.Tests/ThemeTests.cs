@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using WallpaperSuite.Core;
 using WallpaperSuite.Core.Themes;
 
@@ -7,6 +6,24 @@ namespace WallpaperSuite.Tests;
 
 public sealed class ThemeTests
 {
+    [Fact]
+    public void ThemeRegistry_PreRegistersBuiltInThemesWithoutWallPicker()
+    {
+        Assert.True(ThemeRegistry.Descriptors.Count >= 4);
+        Assert.Equal("arc-carousel", ThemeRegistry.Descriptors[0].Id);
+        Assert.Equal("Arc Carousel", ThemeRegistry.Descriptors[0].DisplayName);
+
+        Assert.Contains(ThemeRegistry.Descriptors, d => d.Id == "arc-carousel" && d.DisplayName == "Arc Carousel");
+        Assert.Contains(ThemeRegistry.Descriptors, d => d.Id == "skewed-accordion" && d.DisplayName == "Skewed Accordion");
+        Assert.Contains(ThemeRegistry.Descriptors, d => d.Id == "centered-carousel" && d.DisplayName == "Centered Carousel");
+        Assert.Contains(ThemeRegistry.Descriptors, d => d.Id == "classic-grid" && d.DisplayName == "Classic Grid");
+
+        Assert.True(ThemeRegistry.Contains("arc-carousel"));
+        Assert.True(ThemeRegistry.Contains("skewed-accordion"));
+        Assert.True(ThemeRegistry.Contains("centered-carousel"));
+        Assert.True(ThemeRegistry.Contains("classic-grid"));
+    }
+
     [Fact]
     public void ThemeRegistry_ContainsBuiltInThemes()
     {
@@ -38,21 +55,22 @@ public sealed class ThemeTests
     }
 
     [Fact]
-    public void ThemeRegistry_DefaultThemeId_IsSkewedAccordion()
+    public void ThemeRegistry_DefaultThemeId_IsArcCarousel()
     {
-        Assert.Equal("skewed-accordion", ThemeRegistry.DefaultThemeId);
+        Assert.Equal("arc-carousel", ThemeRegistry.DefaultThemeId);
     }
 
     [Fact]
-    public void AppConfig_ActiveWallpaperTheme_DefaultsToSkewedAccordion()
+    public void AppConfig_ActiveWallpaperTheme_DefaultsToArcCarousel()
     {
         var config = new AppConfig();
         config.EnsureDefaults();
 
-        Assert.Equal("skewed-accordion", config.ActiveWallpaperTheme);
+        Assert.Equal("arc-carousel", config.ActiveWallpaperTheme);
     }
 
     [Theory]
+    [InlineData("arc-carousel")]
     [InlineData("skewed-accordion")]
     [InlineData("centered-carousel")]
     [InlineData("classic-grid")]
@@ -74,7 +92,7 @@ public sealed class ThemeTests
         var config = new AppConfig { ActiveWallpaperTheme = theme! };
         config.EnsureDefaults();
 
-        Assert.Equal("skewed-accordion", config.ActiveWallpaperTheme);
+        Assert.Equal("arc-carousel", config.ActiveWallpaperTheme);
     }
 
     [Fact]
@@ -132,7 +150,8 @@ public sealed class ThemeTests
         public void Show(AppConfig config, string folder, Action<string> onWallpaperSelected) { }
         public void Hide() { }
 
-        [SuppressMessage("CodeQuality", "CS0067", Justification = "Required by interface")]
+#pragma warning disable CS0067 // Required by IWallpaperTheme, unused by dummy
         public event Action<string>? WallpaperSelected;
+#pragma warning restore CS0067
     }
 }

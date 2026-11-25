@@ -158,9 +158,9 @@ internal sealed class WalldContext : ApplicationContext
                 return;
             }
 
-            string themeArg = $"--theme={_config.ActiveWallpaperTheme}";
+            string themeArg = $"--theme {_config.ActiveWallpaperTheme}";
             using var process = Process.Start(new ProcessStartInfo(pickerPath, themeArg) { UseShellExecute = true });
-            SimpleLogger.Info($"picker started: {pickerPath} {themeArg}");
+            SimpleLogger.Info($"picker started: \"{pickerPath}\" {themeArg}");
         }
         catch (Exception ex)
         {
@@ -202,6 +202,7 @@ internal sealed class WalldContext : ApplicationContext
             _config.ExtraFolders = disk.ExtraFolders; // picker drag-and-drop
             _config.Excluded = disk.Excluded;         // picker X key
             _config.Collections = disk.Collections;   // picker C key
+            _config.ActiveWallpaperTheme = disk.ActiveWallpaperTheme; // theme set via Settings/tray
         }
         catch (Exception ex)
         {
@@ -416,7 +417,7 @@ internal sealed class WalldContext : ApplicationContext
     {
         _themeMenu.DropDownItems.Clear();
 
-        foreach (var theme in ThemeRegistry.All)
+        foreach (var theme in ThemeRegistry.Descriptors)
         {
             var localThemeId = theme.Id;
             var item = new ToolStripMenuItem(theme.DisplayName, null, (_, _) => SetActiveTheme(localThemeId))
@@ -546,7 +547,9 @@ internal sealed class WalldContext : ApplicationContext
             _config.LiveWallpaperEnabled = true;
             _configStore.Save(_config);
 
-            _liveWallpaperProcess = Process.Start(new ProcessStartInfo(videoPath, full) { UseShellExecute = false });
+            var psi = new ProcessStartInfo(videoPath) { UseShellExecute = false };
+            psi.ArgumentList.Add(full);
+            _liveWallpaperProcess = Process.Start(psi);
             SimpleLogger.Info($"live wallpaper: started '{full}'");
         }
         catch (Exception ex)
@@ -567,6 +570,7 @@ internal sealed class WalldContext : ApplicationContext
             if (_liveWallpaperProcess is not null && !_liveWallpaperProcess.HasExited)
             {
                 _liveWallpaperProcess.Kill();
+                _liveWallpaperProcess.WaitForExit(2000);
                 _liveWallpaperProcess.Dispose();
             }
             _liveWallpaperProcess = null;
@@ -833,12 +837,11 @@ internal sealed class WalldContext : ApplicationContext
     private IReadOnlyList<HotkeyRegistrationFailure> ApplySettings(AppConfig config)
     {
         // Values that may have changed while the dialog was open, and that the
-        // dialog does not edit, come from their owners instead of the stale draft.
-        AppConfig disk = _configStore.Load();
-        disk.EnsureDefaults();
-        config.Favorites = disk.Favorites;
-        config.LastApplied = disk.LastApplied;
-        config.Collections = disk.Collections;
+        // dialog does not edit, come from the live config instead of the stale draft.
+        config.Favorites = _config.Favorites;
+        config.LastApplied = _config.LastApplied;
+        config.Collections = _config.Collections;
+        config.Excluded = _settingsForm?.ExcludedCleared == true ? [] : _config.Excluded;
         config.DailyWallpaperLastDate = _config.DailyWallpaperLastDate;
 
     bool dailyChanged = config.DailyWallpaperEnabled != _config.DailyWallpaperEnabled;
@@ -968,6 +971,7 @@ internal sealed class WalldContext : ApplicationContext
         _dailyItem.Checked = _config.DailyWallpaperEnabled;
         _wallhavenItem.Checked = _config.WallhavenEnabled;
         _wallhavenItem.Text = "Wallhaven wallpapers";
+        RebuildThemesMenu();
     }
 
     private static Process? FindRunningPicker()

@@ -16,9 +16,9 @@ internal sealed class TempDir : IDisposable
         Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wsp-test-" + Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(Path);
 
-        // Redirect any AppPaths-based logging/IO into this folder for the test's lifetime.
-        _previousOverride = WallpaperSuite.Core.AppPaths.DataDir;
-        WallpaperSuite.Core.AppPaths.SetDataDirOverride(Path);
+        // Redirect any AppPaths-based logging/IO into this folder for the test's lifetime
+        // without touching the real %APPDATA%\WallpaperPicker first.
+        _previousOverride = WallpaperSuite.Core.AppPaths.SetDataDirOverride(Path);
     }
 
     public string Path { get; }

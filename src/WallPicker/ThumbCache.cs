@@ -79,7 +79,7 @@ public sealed class ThumbCache : IDisposable
 
     public bool IsWanted(string key) => _wanted.Contains(key);
 
-    public void RequestAround(IReadOnlyList<WallpaperItem> items, int centerIndex)
+    public void RequestAround(IReadOnlyList<WallpaperItem> items, int centerIndex, int radius = PreloadRadius)
     {
         int n = items.Count;
         if (n == 0)
@@ -89,9 +89,10 @@ public sealed class ThumbCache : IDisposable
             return;
         }
 
+        int effectiveRadius = Math.Max(1, radius);
         centerIndex = Math.Clamp(centerIndex, 0, n - 1);
-        int lo = Math.Max(0, centerIndex - PreloadRadius);
-        int hi = Math.Min(n - 1, centerIndex + PreloadRadius);
+        int lo = Math.Max(0, centerIndex - effectiveRadius);
+        int hi = Math.Min(n - 1, centerIndex + effectiveRadius);
 
         var nextWanted = new HashSet<string>(hi - lo + 1, StringComparer.Ordinal);
         var indices = new List<int>(hi - lo + 1);

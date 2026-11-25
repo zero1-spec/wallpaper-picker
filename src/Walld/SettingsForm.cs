@@ -105,6 +105,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _saveButton = new() { Text = "Save", AutoSize = true };
     private readonly Button _cancelButton = new() { Text = "Cancel", AutoSize = true };
 
+    internal bool ExcludedCleared { get; private set; }
+
     public SettingsForm(AppConfig current, Func<AppConfig, IReadOnlyList<HotkeyRegistrationFailure>> apply, UpdateService update, Action? reload = null, WallhavenWallpaperService? wallhaven = null)
     {
         _draft = current.Clone(); // edits apply to a copy so Cancel discards them
@@ -125,8 +127,11 @@ internal sealed class SettingsForm : Form
         // Window icon from the embedded ApplicationIcon in the exe.
         try
         {
-            var exeLocation = System.Reflection.Assembly.GetEntryAssembly()!.Location;
-            Icon = Icon.ExtractAssociatedIcon(exeLocation);
+            var exeLocation = Environment.ProcessPath ?? System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            if (!string.IsNullOrEmpty(exeLocation))
+            {
+                Icon = Icon.ExtractAssociatedIcon(exeLocation);
+            }
         }
         catch { }
 
@@ -289,6 +294,7 @@ internal sealed class SettingsForm : Form
         _clearHiddenButton.Click += (_, _) =>
         {
             _draft.Excluded.Clear();
+            ExcludedCleared = true;
             UpdateHiddenLabel();
         };
 
@@ -346,7 +352,7 @@ internal sealed class SettingsForm : Form
         livePathRow.Controls.Add(_liveBrowseButton, 1, 0);
 
         // Theme selection
-        _themeBox.Items.AddRange(ThemeRegistry.All.Select(t => $"{t.DisplayName} ({t.Id})").ToArray());
+        _themeBox.Items.AddRange(ThemeRegistry.Descriptors.Select(t => $"{t.DisplayName} ({t.Id})").ToArray());
 
         var page = Stack(
             Heading("Multiple screens"),
@@ -693,8 +699,12 @@ internal sealed class SettingsForm : Form
         _themeFollowsWallpaper.Checked = _draft.ThemeFollowsWallpaper;
 
         // Theme selection
-        int themeIndex = ThemeRegistry.All.ToList().FindIndex(t => string.Equals(t.Id, _draft.ActiveWallpaperTheme, StringComparison.OrdinalIgnoreCase));
-        _themeBox.SelectedIndex = themeIndex >= 0 ? themeIndex : 0;
+        if (_themeBox.Items.Count > 0)
+        {
+            int themeIndex = ThemeRegistry.Descriptors.ToList().FindIndex(
+                t => string.Equals(t.Id, _draft.ActiveWallpaperTheme, StringComparison.OrdinalIgnoreCase));
+            _themeBox.SelectedIndex = themeIndex >= 0 ? themeIndex : 0;
+        }
 
         _liveEnabled.Checked = _draft.LiveWallpaperEnabled;
         _livePathBox.Text = _draft.LiveWallpaperPath;
@@ -789,9 +799,9 @@ internal sealed class SettingsForm : Form
         _draft.ThemeFollowsWallpaper = _themeFollowsWallpaper.Checked;
 
         // Theme selection
-        if (_themeBox.SelectedIndex >= 0 && _themeBox.SelectedIndex < ThemeRegistry.All.Count)
+        if (_themeBox.SelectedIndex >= 0 && _themeBox.SelectedIndex < ThemeRegistry.Descriptors.Count)
         {
-            _draft.ActiveWallpaperTheme = ThemeRegistry.All[_themeBox.SelectedIndex].Id;
+            _draft.ActiveWallpaperTheme = ThemeRegistry.Descriptors[_themeBox.SelectedIndex].Id;
         }
 
         _draft.LiveWallpaperEnabled = _liveEnabled.Checked;

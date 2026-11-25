@@ -10,14 +10,14 @@ Lightweight, offline-first wallpaper manager for Windows. A background tray daem
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
 <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10-blue?style=for-the-badge&logo=dotnet" alt=".NET 10"></a>
 <img src="https://img.shields.io/badge/Windows-11%20tested%20|%2010%201607%2B-blue?style=for-the-badge&logo=windows" alt="Windows 11 tested, Windows 10 1607+ should work">
-<img src="https://img.shields.io/badge/Version-0.7.0-green?style=for-the-badge" alt="Version 0.7.0">
+<img src="https://img.shields.io/badge/Version-0.8.0-green?style=for-the-badge" alt="Version 0.8.0">
 <img src="https://img.shields.io/badge/RAM-~13%20MB%20idle-blue?style=for-the-badge" alt="RAM ~13 MB idle">
 <img src="https://img.shields.io/badge/Admin-No-green?style=for-the-badge" alt="No admin needed">
 <img src="https://img.shields.io/badge/Offline-By%20default%20(four%20optional%20network%20features)-green?style=for-the-badge" alt="Offline by default; four optional network features">
 </p>
 
 <p>
-<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.7.0-blue?style=for-the-badge" alt="Download v0.7.0"></a>
+<a href="https://github.com/zero1-spec/wallpaper-picker/releases/latest"><img src="https://img.shields.io/badge/Download%20v0.8.0-blue?style=for-the-badge" alt="Download v0.8.0"></a>
 </p>
 
 <p>
@@ -92,7 +92,7 @@ WallpaperSuite is offline by default. Exactly four optional network features exi
 ### Wallpaper of the day
 
 - **What is requested:** Bing's daily image metadata (`www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=<your Windows display language>`), then, only when a new image exists, the image file itself (`www.bing.com<urlbase>_UHD.jpg` or `_1920x1080.jpg`).
-- **Headers:** `User-Agent: WallpaperSuite/0.7.0` only — no other custom headers.
+- **Headers:** `User-Agent: WallpaperSuite/0.8.0` only — no other custom headers.
 - **Not sent:** no file names, paths, machine name, username, or any telemetry. The only variable parameter is the system locale (`mkt`), used to pick your Bing market.
 - **When off:** no `HttpClient` is created and no timer runs; the service does nothing until you enable it.
 
@@ -131,7 +131,7 @@ If a newer version is found, a tray balloon and a dialog offer **Update now**, *
 
 ## Install
 
-1. Download `WallpaperSetup-0.7.0.exe` from Releases.
+1. Download `WallpaperSetup-0.8.0.exe` from Releases.
 2. Run it. The installer is per-user (`%LOCALAPPDATA%\Programs\WallpaperSuite`) — **no administrator rights needed**. "Start with Windows" is checked by default.
 3. The publish is self-contained (`.NET 10 runtime bundled`), so you do **not** need to install .NET separately.
 4. Uninstall from Windows Settings → Apps → WallpaperSuite. Your user data in `%APPDATA%\WallpaperPicker` is kept.
@@ -298,7 +298,7 @@ To build the installer:
 .\build\build-installer.ps1
 ```
 
-Output: `installer\Output\WallpaperSetup-0.7.0.exe`.
+Output: `installer\Output\WallpaperSetup-0.8.0.exe`.
 
 <details>
 <summary>Architecture / Project structure</summary>
